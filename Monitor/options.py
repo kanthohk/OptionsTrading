@@ -2,6 +2,7 @@ import logging, os
 import yaml, time, requests, re, threading
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
+import pandas as pd
 
 EXPIRY_WEEKDAY = {
     "SENSEX": 3, # Thursday
@@ -157,7 +158,6 @@ class handle_options:
 
                     self.positions.append(position_to_save)
 
-            import pandas as pd
             df=pd.DataFrame(self.positions)
             self.logger.info(f"\n{df[['expiry', 'strike', 'option_type', 'quantity', 'average_price', 'last_price']]}")
 
