@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #74ebd5, #ACB6E5);
+            padding: 10px;
+        }
+
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 1200px;
+            margin: auto;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+            }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+            color: #444;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
+
+        textarea {
+            height: 300px;
+        }
+
+        .button-row {
+            text-align: right;
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        .response-box {
+            margin-top: 20px;
+        }
+
+        .response-box textarea {
+            height: 350px;
+            background: #f4f6f8;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>API Request Tool</h2>
+
+    <div class="row">
+        <label>Key</label><input type="text" id="ConfigKey" placeholder="Config key">
+        <label>Value</label><input id="ConfigValue" placeholder="Config Value">
+        <label>User</label><input type="text" id="username" placeholder="UserName" value="sashi">
+    </div>
+
+    <div class="button-row">
+        <button onclick="callAPI('start_watch')" style="background:#4CAF50; margin-right:10px;">Start Monitoring</button>
+        <button onclick="callAPI('stop_watch')" style="background:#f44336; margin-right:10px;">Stop Monitoring</button>
+        <button onclick="watchLog()" style="background:#2196F3; margin-right:10px;">Get Watch Log</button>
+        <button onclick="loadConfig()" style="background:#9C27B0; margin-right:10px;">Load Config</button>
+        <button onclick="putConfig()" style="background:#9C27B0; margin-right:10px;">Update Config</button>
+    </div>
+    <div class="button-row"><button onclick="callAPI('start_watch')" style="background:#4CAF50; margin-right:10px;">Get OptionChain</button>
+    </div>
+    <div class="button-row">
+        <br>
+        <label id="LastRun">Last Run: </label>
+    </div>
+
+    <div class="response-box">
+        <label>Response</label>
+        <textarea id="responseBox" readonly></textarea>
+    </div>
+</div>
+
+<script>
+function callAPI(param) {
+    document.getElementById("responseBox").value = "Firing the API request for " + param + "......."
+    fetch("http://localhost:5000/" + param, {
+        method: "GET",
+        headers: {
+            "Content-Type": "application/json"
+        },
+    })
+    .then(response => response.json())
+    .then(result => {
+        document.getElementById("responseBox").value = JSON.stringify(result[1], null, 2);
+    })
+    .catch(error => {
+        document.getElementById("responseBox").value = "Error: " + error;
+    });
+}
+
+function loadConfig() {
+    fetch("http://localhost:5000/get_watch_config")
+    .then(response => response.json())
+    .then(data => {
+        // Show response
+        document.getElementById("LastRun").textContent = 'Last Run: ' + JSON.stringify(data[1].last_watched, null, 2).replace('"', '').replace('"', '');
+        document.getElementById("responseBox").value = JSON.stringify(data[1], null, 2);
+
+    })
+    .catch(error => {
+        document.getElementById("responseBox").value = "Error: " + error;
+    });
+}
+
+function putConfig() {
+    key1 = document.getElementById("ConfigKey").value
+    value1 = document.getElementById("ConfigValue").value
+    fetch("http://localhost:5000/put_watch_config?" + key1 + "=" + value1)
+    .then(response => response.json())
+    .then(data => {
+        // Show response
+        document.getElementById("responseBox").value = JSON.stringify(data, null, 2);
+
+    })
+    .catch(error => {
+        document.getElementById("responseBox").value = "Error: " + error;
+    });
+}
+
+function watchLog() {
+    user = document.getElementById("username").value
+    fetch("http://localhost:5000/get_watch_log?user=" + user)
+    .then(response => response.json())
+    .then(data => {
+        // Show response
+        const responseBox = document.getElementById("responseBox");
+        responseBox.value = JSON.stringify(data[1], null, 2).replace(/\\n/g, "\n");
+        responseBox.scrollTop = responseBox.scrollHeight;
+    })
+    .catch(error => {
+        document.getElementById("responseBox").value = "Error: " + error;
+    });
+}
+
+</script>
+
+</body>
+</html>
