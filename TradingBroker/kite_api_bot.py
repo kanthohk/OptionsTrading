@@ -126,7 +126,7 @@ class KITE_CONNECT:
             self.logger.error(f"Kite API (positions) failed with error: {e}")
             return None
         return positions_list
-    def place_order(self, symbol,quantity=1,transaction_type="BUY",exchange="NSE",order_type="MARKET",price="1",variety="regular",product="NRML",validity="DAY"):
+    def place_order(self, symbol,quantity=1,transaction_type="BUY",exchange="NSE",order_type="MARKET",price="1",variety="regular",product="NRML",validity="DAY", market_protection=2):
         try:
             order_id = self.kite.place_order(tradingsymbol=symbol,
                                              exchange=exchange,
@@ -136,7 +136,8 @@ class KITE_CONNECT:
                                              order_type=order_type,
                                              price=price,
                                              product=product,
-                                             validity=validity)
+                                             validity=validity,
+                                             market_protection=market_protection)
 
             self.logger.info(f"{datetime.now(ist).strftime('%Y%m%d %H:%M:%S')}: Order placed. ID is: {order_id}")
             return order_id
