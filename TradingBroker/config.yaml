@@ -6,13 +6,13 @@ credentials:
     secret_key: 
     username : 
     password : 
-    authenticator_token : LRSH4P4ZWCVFACEWP7FYDL5YAEPPFGXD
+    authenticator_token : 
   madhu:
     api_key: 
     secret_key: 
     username: 
     password: 
-    authenticator_token: GZZ3XZFJQBEUSY63RXH4SLCPZQZB5XEB
+    authenticator_token: 
   sakhi:
     api_key: 
     secret_key: 
