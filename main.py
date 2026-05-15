@@ -1,26 +1,20 @@
 from flask import Flask, request, jsonify,render_template
-import yaml
+import yaml, time
+from datetime import date, datetime, timedelta
+import pytz
+ist = pytz.timezone('Asia/Kolkata')
+
 from TradingBroker.kite_api_bot import KITE_CONNECT
-from MarketAnalysis.fetch_data import get_ltp, get_option_chain
 
 from Monitor.options import *
+from Monitor.alert import AlertMobile
 # Create Flask app
 app = Flask(__name__)
 broker_connections = {}
 SUPER_USER = "sashi"
-USER = "sashi"
 # Home route
 # Global control variables
-worker_thread = None
-stop_event = threading.Event()
 
-def background_task():
-    global USER
-    print("Monitoring task started")
-    while not stop_event.is_set():
-        monitor_obj = handle_options(USER)
-        run_user(USER, monitor_obj)
-    print("Monitoring task stopped")
 
 def get_credentials():
     with open("TradingBroker/config.yaml", "r") as file:
@@ -37,43 +31,21 @@ def get_broker(user):
         return [False, "Either user or his credentials are missing"]
     #
     kc = KITE_CONNECT(user, credentials.get(user))
-    if kc:
+    if kc.access_token:
         broker_connections[user]= kc
         return [True, "Got Connection successfully"]
     else:
         return [False, "Failed to get connection"]
-
-@app.route("/start_watch")
-def start_watch():
-    global worker_thread, stop_event
-
-    if worker_thread and worker_thread.is_alive():
-        return jsonify({"message": "Task already running"})
-
-    stop_event.clear()
-    worker_thread = threading.Thread(target=background_task)
-    worker_thread.start()
-
-    return [True, f"Monitoring Task started"]
-
-
-@app.route("/stop_watch")
-def stop_watch():
-    global worker_thread, stop_event
-
-    if not worker_thread or not worker_thread.is_alive():
-        return jsonify({"message": "No task running"})
-
-    stop_event.set()
-    worker_thread.join()
-
-    return [True, f"Monitoring Task stopped"]
-
 @app.route("/")
 def home():
     return render_template("dashboard.html")
-
-
+@app.route("/status")
+def monitor_status():
+    watch_config = get_watch_config()
+    if watch_config[1]["autotrade"]:
+        return [True, "Monitoring", watch_config[1]["last_watched"]]
+    else:
+        return [False, "Not Monitoring", watch_config[1]["last_watched"]]
 @app.route("/get_orders", methods=["GET"])
 def get_orders():
     global broker_connections
@@ -82,7 +54,9 @@ def get_orders():
     try:
         if user:
             if not user in broker_connections:
-                get_broker(user)
+                connection_status = get_broker(user)
+                if not connection_status[0]:
+                    raise Exception(f"Failed in KITE Connection for user {user}")
             orders[user] = broker_connections[user].fetch_orders()
         else:
             for user in broker_connections:
@@ -102,7 +76,9 @@ def get_positions():
         if user:
             if not user in broker_connections:
                 print(f"Get the broker connection for {user}...")
-                get_broker(user)
+                connection_status = get_broker(user)
+                if not connection_status[0]:
+                    raise Exception(f"Failed in KITE Connection for user {user}")
             positions[user] =  broker_connections[user].fetch_optoin_positions()
         else:
             for user in broker_connections:
@@ -130,9 +106,14 @@ def get_current_price(symbol, request_type):
         return [True, ltp]
     else:
         return [False, None]
-@app.route("/get_optionchain", methods=["GET"])
+@app.route("/get_optionchain/<symbol>/<expiry>", methods=["GET"])
 def get_optionchain(symbol, expiry):
+    selected_symbols = {}
+    symbol_price = 0
     try:
+        watch_config = get_watch_config()
+        low_strike = int(watch_config[1]["strike_range"].split(",")[0])
+        high_strike = int(watch_config[1]["strike_range"].split(",")[1])
         if not symbol:
             symbol = request.args.get("symbol")
         if not expiry:
@@ -149,7 +130,7 @@ def get_optionchain(symbol, expiry):
                 strike_position = int(symbol_price / 100) * 100 - 300
             else:
                 strike_position = int(symbol_price / 100) * 100 + 400
-            while strike_price >= 10:
+            while strike_price >= low_strike:
                 strike = index + str(expiry) + str(strike_position) + option_type
                 strike_price = get_current_price(strike, 'option')
                 if strike_price[1]:
@@ -157,8 +138,12 @@ def get_optionchain(symbol, expiry):
                 else:
                     strike_price = 1000
                 optionchain[option_type][strike] = strike_price if strike_price != 1000 else 0
+                if strike_price <= high_strike  and strike_price >= low_strike:
+                    if option_type not in selected_symbols:
+                        selected_symbols[option_type] = strike
                 strike_position = (strike_position - 50) if option_type == 'PE' else (strike_position + 50)
-        return [True, optionchain]
+                time.sleep(1)
+        return [True, optionchain, selected_symbols]
     except Exception as e:
         return [False, f"Could not get the optionchain: {e}"]
 
@@ -172,9 +157,14 @@ def place_order():
     try:
         if user:
             if not user in broker_connections:
-                get_broker(user)
+                connection_status = get_broker(user)
+                if not connection_status[0]:
+                    raise Exception(f"Failed in KITE Connection for user {user}")
             order_id = broker_connections[user].place_order(symbol=symbol, quantity=quantity, transaction_type=transaction_type, exchange=exchange)
-            return [True, f"Order is placed successfully:{order_id}"]
+            if order_id:
+                return [True, f"Order is placed successfully:{order_id}"]
+            else:
+                return [False, f"Failed to place order with error"]
         else:
             raise Exception(f"User cannot be null")
     except Exception as e:
@@ -214,13 +204,12 @@ def put_watch_config():
     except Exception as e:
         return [False, {"Error": f"Failed to write the config: {e}"}]
 
-
 @app.route("/get_watch_log", methods=["GET"])
 def get_watch_log():
     watch_log = ""
     try:
-        user = request.args.get("user")
-        with open(f"{user}_watch.log", "r") as file:
+        daystr = datetime.now(ist).strftime('%Y%m%d')
+        with open(f"{daystr}_watch.log", "r") as file:
             watch_log = file.read()
         return [True, watch_log]
     except Exception as e:
@@ -228,5 +217,8 @@ def get_watch_log():
 
 # Run the app
 if __name__ == "__main__":
-    get_broker(SUPER_USER)
-    app.run(debug=True, port=5000)
+    connection_status = get_broker(SUPER_USER)
+    if not connection_status[0]:
+        print(f"Failed in KITE Connection for user {SUPER_USER}")
+    else:
+        app.run(host='0.0.0.0', port=80, debug=False)
