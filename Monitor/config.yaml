@@ -1,12 +1,23 @@
-adjust_at: 45
-adjust_hedges: false
+adjust_at: 30
+adjust_hedges: true
 adjustment: true
 close_on_stoploss: false
 close_on_trailprofit: false
 delay: 30
-last_watched: 2026-04-13 14:40
+last_watched: 2026-04-19 18:35
 max_loss_multiplier: 10
 minimum_distance_from_index: 400
-trail_profit_threshold: 3
+strike_range: 15,25
+trail_profit_threshold: 1
 trailing_profit_multiplier: 3
 users: sashi
+adjustment_days: 0,1,2
+investment: 80000
+url: http://157.10.99.215:80
+realized_pnl_0: 13211.25
+realized_pnl_1: 6488.375
+realized_pnl_2: -62
+realized_pnl_3: -62.0
+realized_pnl_4: 0.0
+quantity_per_lot: 65
+autotrade: false
