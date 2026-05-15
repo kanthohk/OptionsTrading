@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>API Tool</title>
+    <title id="title"></title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -79,26 +79,31 @@
 <body>
 
 <div class="container">
-    <h2>API Request Tool</h2>
-
+    <h2><div id="heading"></div></h2>
+    <h3>Rs.800 per lot or 6+6 points</h3>
     <div class="row">
-        <label>Key</label><input type="text" id="ConfigKey" placeholder="Config key">
-        <label>Value</label><input id="ConfigValue" placeholder="Config Value">
-        <label>User</label><input type="text" id="username" placeholder="UserName" value="sashi">
-    </div>
-
-    <div class="button-row">
-        <button onclick="callAPI('start_watch')" style="background:#4CAF50; margin-right:10px;">Start Monitoring</button>
-        <button onclick="callAPI('stop_watch')" style="background:#f44336; margin-right:10px;">Stop Monitoring</button>
-        <button onclick="watchLog()" style="background:#2196F3; margin-right:10px;">Get Watch Log</button>
         <button onclick="loadConfig()" style="background:#9C27B0; margin-right:10px;">Load Config</button>
+        <input type="text" id="ConfigKey" placeholder="Config key">
+        <input id="ConfigValue" placeholder="Config Value">
         <button onclick="putConfig()" style="background:#9C27B0; margin-right:10px;">Update Config</button>
     </div>
-    <div class="button-row"><button onclick="callAPI('start_watch')" style="background:#4CAF50; margin-right:10px;">Get OptionChain</button>
+
+
+    <div class="row">
+        <button onclick="watchLog()" style="background:#2196F3; margin-right:10px;">Get Watch Log</button>
+            <input type="text" id="Symbol" placeholder="NIFTY26APR/2642125000PE">
+            <input type="text" id="Quantity" placeholder="Quantity-650">
+        <button onclick="place('BUY')" style="background:#4CAF50; margin-right:10px;">Buy Order</button>
+        <button onclick="place('SELL')" style="background:#4CAF50; margin-right:10px;">Sell Order</button>
     </div>
-    <div class="button-row">
-        <br>
-        <label id="LastRun">Last Run: </label>
+    <div class="row">
+        <input type="text" id="index" placeholder="NIFTY 50" value="NIFTY 50">
+        <input type="text" id="expiry" placeholder="21426 or 26APR">   
+        <button onclick="option_chain()" style="background:#4CAF50; margin-right:10px;">Option Chain</button>
+    </div>
+    <div class="row">
+        <label id="Status">Status: </label>
+        <label style="margin-left:auto;" id="LastRun">Last Run: </label>
     </div>
 
     <div class="response-box">
@@ -108,9 +113,15 @@
 </div>
 
 <script>
+let username = "Sashi";
+let ipaddress = "157.10.99.215";
+let port = "80";
+document.getElementById("heading").innerText = username + " Trade Monitor"
+document.getElementById("title").innerText = username + " Trading bot"
+
 function callAPI(param) {
     document.getElementById("responseBox").value = "Firing the API request for " + param + "......."
-    fetch("http://localhost:5000/" + param, {
+    fetch("http://" + ipaddress + ":" + port + "/" + param, {
         method: "GET",
         headers: {
             "Content-Type": "application/json"
@@ -126,13 +137,13 @@ function callAPI(param) {
 }
 
 function loadConfig() {
-    fetch("http://localhost:5000/get_watch_config")
+    fetch("http://" + ipaddress + ":" + port + "/get_watch_config")
     .then(response => response.json())
     .then(data => {
         // Show response
         document.getElementById("LastRun").textContent = 'Last Run: ' + JSON.stringify(data[1].last_watched, null, 2).replace('"', '').replace('"', '');
         document.getElementById("responseBox").value = JSON.stringify(data[1], null, 2);
-
+        
     })
     .catch(error => {
         document.getElementById("responseBox").value = "Error: " + error;
@@ -142,7 +153,7 @@ function loadConfig() {
 function putConfig() {
     key1 = document.getElementById("ConfigKey").value
     value1 = document.getElementById("ConfigValue").value
-    fetch("http://localhost:5000/put_watch_config?" + key1 + "=" + value1)
+    fetch("http://" + ipaddress + ":" + port + "/put_watch_config?" + key1 + "=" + value1)
     .then(response => response.json())
     .then(data => {
         // Show response
@@ -155,8 +166,8 @@ function putConfig() {
 }
 
 function watchLog() {
-    user = document.getElementById("username").value
-    fetch("http://localhost:5000/get_watch_log?user=" + user)
+    user = username.toLowerCase();
+    fetch("http://" + ipaddress + ":" + port + "/get_watch_log?user=" + user)
     .then(response => response.json())
     .then(data => {
         // Show response
@@ -168,7 +179,56 @@ function watchLog() {
         document.getElementById("responseBox").value = "Error: " + error;
     });
 }
+function option_chain() {
+    index1 = document.getElementById("index").value
+    expiry1 = document.getElementById("expiry").value
+    document.getElementById("responseBox").value = "Fetching the option chain please wait ..."
+    fetch("http://" + ipaddress + ":" + port + "/get_optionchain/" + index1 + "/" + expiry1)
+    .then(response => response.json())
+    .then(data => {
+        // Show response
+        document.getElementById("responseBox").value = JSON.stringify(data, null, 2);
+        document.getElementById("PESymbol").value = JSON.stringify(data[2].PE, null, 2).replace('"','').replace('"','');
+        document.getElementById("CESymbol").value = JSON.stringify(data[2].CE, null, 2).replace('"','').replace('"','');
 
+    })
+    .catch(error => {
+        document.getElementById("responseBox").value = "Error: " + error;
+    });
+}
+
+function place(transaction_type) {
+    Symbol = document.getElementById("Symbol").value
+    Quantity = document.getElementById("Quantity").value
+    user = username.toLowerCase()
+    document.getElementById("responseBox").value = "Placing " + transaction_type + "orders. Please wait ..."
+    fetch("http://" + ipaddress + ":" + port + "/place_order?user=" + user + "&symbol=" + Symbol + "&quantity=" + Quantity + "&transaction_type=" + transaction_type + "&exchange=NFO")
+    .then(response => response.json())
+    .then(data => {
+        // Show response
+        document.getElementById("responseBox").value = JSON.stringify(data, null, 2);
+    })
+    .catch(error => {
+        document.getElementById("responseBox").value = "Error: " + error;
+    });
+
+}
+
+function get_status() {
+    fetch("http://" + ipaddress + ":" + port + "/status")
+    .then(response => response.json())
+    .then(data => {
+        // Show response
+        document.getElementById("Status").textContent = 'Status: ' + JSON.stringify(data[1], null, 2).replace('"', '').replace('"', '');
+        document.getElementById("LastRun").textContent = 'Last Run: ' + JSON.stringify(data[2], null, 2).replace('"', '').replace('"', '');
+    })
+    .catch(error => {
+        document.getElementById("Status").textContent = "Status: " + error;
+    });
+}
+
+get_status();
+setInterval(get_status, 30000); // 30000 ms = 1 minute
 </script>
 
 </body>
