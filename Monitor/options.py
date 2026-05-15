@@ -3,64 +3,25 @@ import yaml, time, requests, re, threading
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import pandas as pd
-
-EXPIRY_WEEKDAY = {
-    "SENSEX": 3, # Thursday
-    "NIFTY": 1,  # Tuesday
-    "BANKNIFTY": 1,  # Tuesday
-    "FINNIFTY": 1,  # Tuesday
-}
+import datetime as dt
+import pytz, csv
+ist = pytz.timezone('Asia/Kolkata')
+from Monitor.alert import AlertMobile
+from helpers.basic import last_weekday_of_month, split_symbol, SyncFileHandler, get_config, put_config
 
 OPTIONS_TO_AVOID = [
 "NIFTY26DEC22000PE",
 "NIFTY26DEC23000PE",
 "NIFTY26DEC24000PE",
+"NIFTY26DEC23000CE",
 "NIFTY26DEC24000CE"
 ]
 
-def last_weekday_of_month(year, month, weekday):
-    """Return last given weekday of a month (0=Mon ... 6=Sun)."""
-    d = datetime(year, month, 1) + relativedelta(day=31)
-    while d.weekday() != weekday:
-        d -= timedelta(days=1)
-    return d
-
-def split_symbol(symbol):
-    """Parse KiteConnect option tradingsymbol into components."""
-    match = re.match(r"([A-Z]+)(.+?)(CE|PE)?$", symbol)
-    if not match:
-        return None
-    underlying, middle, opt_type = match.groups()
-    if re.search(r"[A-Z]{3}", middle):
-        yy = int(middle[:2])
-        mon_str = middle[2:5]
-        strike = int(middle[5:])
-        year = 2000 + yy
-        month = datetime.strptime(mon_str, "%b").month
-        expiry_dt = last_weekday_of_month(year, month, EXPIRY_WEEKDAY.get(underlying, 1))
-    else:
-        # Weekly expiry e.g. NIFTY2592324900PE
-        date_part = middle[:-5] # assuming strike is 5 digit
-        yy = int(date_part[-2:])
-        mm = int(date_part[2:-2]) if len(date_part[2:-2]) > 0 else 1
-        dd = int(date_part[:2])
-        strike = int(middle[-5:])
-        expiry_dt = datetime(2000+yy, mm, dd)
-    return underlying, expiry_dt, strike, opt_type
-
-class SyncFileHandler(logging.FileHandler):
-    """FileHandler that flushes and syncs every log record."""
-
-    def emit(self, record):
-        super().emit(record)  # normal logging
-        self.stream.flush()  # flush Python buffer
-        os.fsync(self.stream.fileno())  # flush OS buffer
-
+config_file = "Monitor/config.yaml"
 class handle_options:
     def __init__(self, user):
         self.user = user
         self.logger = self._setup_logger()
-        self.api_url = "http://localhost:5000"
         self.lock_profit = 0
         self.trail_profit_hit_count = 0
         self.positions = []
@@ -78,45 +39,37 @@ class handle_options:
         self.short_call_price = 0
         self.long_call_entry = 0
         self.long_call_price = 0
-        self.total_premium_collected = 0
-        self.total_premium_earned = 0
+        self.nearing_strike = False
         self.strategy = None
-        self.config = self.get_config()
-
-    def get_config(self):
-        with open("Monitor/config.yaml", "r") as file:
-            self.config = yaml.safe_load(file)
-        return self.config
-
-    def put_config(self):
-        try:
-            self.config['last_watched'] = datetime.now().strftime("%Y-%m-%d %H:%M")
-            with open("Monitor/config.yaml", "w") as file:
-                yaml.dump(self.config, file)
-        except Exception as e:
-            self.logger.info(f"Failed to update the config with error {e}")
+        self.config = get_config(config_file)
+        self.api_url = self.config["url"]
 
     def _setup_logger(self):
-        """Create a per-user thread-safe logger with immediate disk writes."""
-        logger = logging.getLogger(f"{self.user}_logger")
-        logger.setLevel(logging.INFO)
-        if not logger.handlers:
-            fh = SyncFileHandler(f"{self.user}_watch.log", mode='w')
-            formatter = logging.Formatter(
-                #'%(asctime)s - %(threadName)s - %(levelname)s - %(message)s'
-                '%(asctime)s - %(message)s'
-            )
-            fh.setFormatter(formatter)
-            logger.addHandler(fh)
-        return logger
 
+        daystr = datetime.now(ist).strftime('%Y%m%d')
+        logger_name = f"{self.user}_{daystr}_logger"
+        logfile = f"{daystr}_watch.log"
+
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.INFO)
+
+        # Prevent duplicate handlers
+        if logger.hasHandlers():
+            logger.handlers.clear()
+
+        fh = SyncFileHandler(logfile, mode='a')
+        formatter = logging.Formatter('%(asctime)s - %(message)s')
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+        logger.propagate = False
+
+        return logger
 
     def process_positions(self):
         #self.logger.info("Fetching options from system ...")
         url = f"{self.api_url}/get_positions?user={self.user}"
         self.positions = []
         self.closed_positions = []
-        self.total_premium_collected = self.total_premium_earned = 0
         response = requests.get(url)
         success = response.json()[0]
         if success:
@@ -138,7 +91,6 @@ class handle_options:
 
                 if position['quantity'] == 0:
                     self.closed_positions.append(position_to_save)
-                    self.total_premium_earned -= position_to_save['pnl']
                 else:
                     #####Get Option latest price ################
 
@@ -150,16 +102,20 @@ class handle_options:
                         self.logger.info(f"Failed to get {position_to_save['tradingsymbol']} ...{response.json()}")
                     #
                     self.quantity = max(self.quantity, abs(position_to_save['quantity'])) if abs(position_to_save['quantity'])>0 else self.quantity
-#                    print(f"{position_to_save['buy_price']}, {position_to_save['buy_quantity']}, {position_to_save['last_price']},{position_to_save['sell_quantity']}, {position_to_save['sell_price']}")
-                    self.total_premium_collected -= position_to_save['buy_price'] * position_to_save['buy_quantity']
-                    self.total_premium_earned -= position_to_save['last_price'] * position_to_save['buy_quantity']
-                    self.total_premium_collected += position_to_save['sell_price'] * position_to_save['sell_quantity']
-                    self.total_premium_earned += position_to_save['last_price'] * position_to_save['sell_quantity']
 
                     self.positions.append(position_to_save)
 
-            df=pd.DataFrame(self.positions)
-            self.logger.info(f"\n{df[['expiry', 'strike', 'option_type', 'quantity', 'average_price', 'last_price']]}")
+            if len(self.positions) > 0:
+                df=pd.DataFrame(self.positions)
+                df.to_csv(f"positions_{dt.date.today()}.csv", header=True, mode='w', quoting=csv.QUOTE_NONNUMERIC, index=False)
+                self.logger.info(f"\n{df[['tradingsymbol', 'expiry', 'strike', 'option_type', 'quantity', 'average_price', 'last_price']]}")
+                return True
+            else:
+                self.logger.info(f"No position found.")
+                return False
+        else:
+            self.logger.info("Failed to fetch positions.")
+            return False
 
     def analyze_positions(self):
         #
@@ -219,7 +175,22 @@ class handle_options:
         self.logger.info(f"Strategy identified {self.strategy}.")
 
     def get_pnl(self):
-        pnl=0
+        curr_week_num = datetime.today().weekday()
+        prev_week_num = curr_week_num - 1
+        realized = unrealized = 0
+        while 0 <= prev_week_num <= 3:
+            if f"realized_pnl_{prev_week_num}" in self.config:
+                realized += int(self.config[f"realized_pnl_{prev_week_num}"])
+                break
+            prev_week_num = prev_week_num - 1
+        #
+        for position in self.closed_positions:
+            if position['expiry'] != self.expiry or position['tradingsymbol'] in [pos['tradingsymbol'] for pos in self.positions]:
+                continue
+            realized += position['pnl']
+            #print(f"Closed Position: {position['tradingsymbol']}, Profit:{position['pnl']}")
+
+        #
         for position in self.positions:
             # Net open quantity
             net_qty = position['buy_quantity'] - position['sell_quantity']
@@ -231,29 +202,30 @@ class handle_options:
             # Realized PnL → closed quantity
             closed_qty = min(position['buy_quantity'], position['sell_quantity'])
 
-            realized = (avg_sell_price - avg_buy_price) * closed_qty * position['multiplier']
+            realized += (avg_sell_price - avg_buy_price) * closed_qty * position['multiplier']
 
             # Unrealized PnL → open quantity
             if net_qty > 0:
-                unrealized = (position['last_price'] - avg_buy_price) * net_qty * position['multiplier']
+                unrealized += (position['last_price'] - avg_buy_price) * net_qty * position['multiplier']
             elif net_qty < 0:
-                unrealized = (avg_sell_price - position['last_price']) * abs(net_qty) * position['multiplier']
+                unrealized += (avg_sell_price - position['last_price']) * abs(net_qty) * position['multiplier']
             else:
-                unrealized = 0
+                unrealized += 0
 
             # Total PnL
-            pnl += realized + unrealized
+
             #print(f"Open Position: {position['tradingsymbol']}, Profit:{ realized + unrealized}")
 
-        for position in self.closed_positions:
-            if position['expiry'] != self.expiry or position['tradingsymbol'] in [pos['tradingsymbol'] for pos in self.positions]:
-                continue
-            pnl += position['pnl']
-            #print(f"Closed Position: {position['tradingsymbol']}, Profit:{position['pnl']}")
+        self.config[f"realized_pnl_{curr_week_num}"] = realized
+        put_config(config_file, "last_watched", datetime.now().strftime("%Y-%m-%d %H:%M"))
+        put_config(config_file, f"realized_pnl_{curr_week_num}", realized)
+        return int(realized + unrealized)
 
-        return int(pnl)
     def check_stop_loss(self):
 
+        market_params = {}
+        header_flag = True
+        market_params['date_time'] = datetime.now(ist).strftime('%Y-%m-%d %H:%M')
     # Generate base factor based on distance from expiry
         dte = (self.expiry.date() - date.today()).days
 
@@ -318,25 +290,31 @@ class handle_options:
         if self.strategy == 'LONG_STRANGLE':
             sl_factor = 2 - sl_factor
         stop_loss_hit = False
-        sl_premium = int((self.total_premium_collected) * sl_factor)
-        self.logger.info(f"SL Factor: {sl_factor}, VIX Factor: {vix_factor}, Base factor: {base_factor}")
-        self.logger.info(f"Collected: {int(self.total_premium_collected)}, Earned: {int(self.total_premium_earned)}")
+        #
+        total_premium_gained = self.get_pnl()
+        if self.strategy == "IRON_CONDOR":
+            total_premium_invested = round((self.quantity/self.config["quantity_per_lot"]) * self.config['investment'], 2)
+        elif self.strategy == "SHORT_STRANGLE":
+            total_premium_invested = round((self.quantity/self.config["quantity_per_lot"]) * self.config['investment'] * 2, 2)
+        else:
+            total_premium_invested = 0
+        #
+        sl_premium = -1 * int((total_premium_invested) * ((sl_factor)/100))
+        self.logger.info(f"SL Factor: {round(sl_factor,2)}, VIX Factor: {vix_factor}, Base factor: {base_factor}")
+        self.logger.info(f"Invested: {int(total_premium_invested)}, Loss/Gaim: {int(total_premium_gained)}")
         self.logger.info(f"StopLoss: {sl_premium}")
-        if self.total_premium_earned >= sl_premium:
+        if total_premium_gained <= sl_premium:
             self.logger.info(f"Stoploss premium {sl_premium} hit. Better close the positions for the day.")
             stop_loss_hit = True
-        #self.logger.info(f"Base_factor: {base_factor}, VIX_factor: {vix_factor}, SL Factor: {sl_factor}")
-        #self.logger.info(f"Premium Collected: {round(self.total_premium_collected,2)}, Premium Earned: {round(self.total_premium_earned,2)}, StopLoss Premium: {round(sl_premium,2)}")
 
     # Check if the strikes are nearing the underlying index
-        nearing_strike = False
+        self.nearing_strike = False
         # Get Option strikes
-        long_put_strike, long_put_symbol = next(((p['strike'], p['tradingsymbol']) for p in self.positions if p['option_type'] == 'PE' and p['transtype'] == 'buy'), (None,None))
-        short_put_strike, short_put_symbol = next(((p['strike'], p['tradingsymbol']) for p in self.positions if p['option_type'] == 'PE' and p['transtype'] == 'sell'), (None,None))
-        short_call_strike, short_call_symbol = next(((p['strike'], p['tradingsymbol']) for p in self.positions if p['option_type'] == 'CE' and p['transtype'] == 'sell'), (None,None))
-        long_call_strike, long_call_symbol = next(((p['strike'], p['tradingsymbol']) for p in self.positions if p['option_type'] == 'CE' and p['transtype'] == 'buy'), (None, None))
+        long_put_strike, long_put_symbol, long_put_quantity = next(((p['strike'], p['tradingsymbol'], p['buy_quantity']-p['sell_quantity']) for p in self.positions if p['option_type'] == 'PE' and p['transtype'] == 'buy'), (None,None,None))
+        short_put_strike, short_put_symbol, short_put_quantity = next(((p['strike'], p['tradingsymbol'], p['sell_quantity']-p['buy_quantity']) for p in self.positions if p['option_type'] == 'PE' and p['transtype'] == 'sell'), (None,None,None))
+        short_call_strike, short_call_symbol, short_call_quantity = next(((p['strike'], p['tradingsymbol'], p['sell_quantity']-p['buy_quantity']) for p in self.positions if p['option_type'] == 'CE' and p['transtype'] == 'sell'), (None,None,None))
+        long_call_strike, long_call_symbol, long_call_quantity = next(((p['strike'], p['tradingsymbol'], p['buy_quantity']-p['sell_quantity']) for p in self.positions if p['option_type'] == 'CE' and p['transtype'] == 'buy'), (None, None,None))
 
-    # Check if strikes nearing the index
         put_distance = index_current_price - (short_put_strike if short_put_strike else long_put_strike)
         call_distance = (short_call_strike if short_call_strike else long_call_strike) - index_current_price
         self.logger.info(f"{(short_put_strike if short_put_strike else long_put_strike)}<-----{put_distance}"
@@ -344,35 +322,87 @@ class handle_options:
                          f"{call_distance}----->{(short_call_strike if short_call_strike else long_call_strike)}")
         if (index_current_price <= (short_put_strike if short_put_strike else long_put_strike) + self.config['minimum_distance_from_index']
                 or index_current_price >= (short_call_strike if short_call_strike else long_call_strike) - self.config['minimum_distance_from_index']):
-            nearing_strike = True
+            self.nearing_strike = True
+            self.logger.info(f"<---- Strikes are neared <= {self.config['minimum_distance_from_index']}---->")
+    # If the strike price is double
+        strike_price_doubled = False
+        short_put_sell_price, short_put_last_price = next(
+            ((p['sell_price'], p['last_price']) for p in self.positions
+             if p['option_type'] == 'PE' and p['transtype'] == 'sell'),
+            (0, 0)
+        )
 
-    # Is Stop Loss hit and also the Strikes nearing the index than close the position
-        if stop_loss_hit or (nearing_strike and self.strategy != 'LONG_STRANGLE'):
-            self.logger.info(f"### Close the strikes as Stop Loss Hit is {stop_loss_hit} and Nifty reaching the strikes is {nearing_strike} ###")
+        short_call_sell_price, short_call_last_price = next(
+            ((p['sell_price'], p['last_price']) for p in self.positions
+             if p['option_type'] == 'CE' and p['transtype'] == 'sell'),
+            (0, 0)
+        )
+
+        if (short_call_last_price >= 2*short_call_sell_price) or (short_put_last_price >= 2*short_put_sell_price):
+            strike_price_doubled = True
+            self.logger.info(f"<------ Prices are doubled ------>")
+
+        market_params['sl_factor'] = round(sl_factor,2)
+        market_params['vix_factor'] = round(vix_factor, 2)
+        market_params['base_factor'] = round(base_factor, 2)
+        market_params['premium_invested'] = int(total_premium_invested)
+        market_params['premium_gained'] = int(total_premium_gained)
+        market_params['sl_premium'] = int(sl_premium)
+        #
+        market_params['short_pe_strike'] = short_put_strike
+        market_params['short_pe_sell_price'] = short_put_sell_price
+        market_params['short_pe_last_price'] = short_put_last_price
+        market_params['put_distance'] = put_distance
+        #
+        market_params['short_ce_strike'] = short_call_strike
+        market_params['short_ce_sell_price'] = short_call_sell_price
+        market_params['short_ce_last_price'] = short_call_last_price
+        market_params['call_distance'] = call_distance
+
+        market_params_df = pd.DataFrame([market_params])
+        market_params_df.to_csv(f"markets_{dt.date.today()}.csv", header=header_flag, mode='a', quoting=csv.QUOTE_NONNUMERIC, index=False)
+        if header_flag:
+            header_flag=False
+
+       # Is Stop Loss hit and also the Strikes nearing the index than close the position
+        if stop_loss_hit and self.nearing_strike and strike_price_doubled and self.strategy != 'LONG_STRANGLE':
+            self.logger.info(f"### Close the strikes as Stop Loss Hit is {stop_loss_hit} and Nifty reaching the strikes is {self.nearing_strike} ###")
             try:
                 if self.config['close_on_stoploss']:
-                    self.logger.info(f"Closing the strikes for {self.strategy}")
-
+                    self.logger.info(f"Closing the strikes for {self.strategy} because of Stoploss hit")
+                    AlertMobile().send(heading=f"{self.user}_StopLoss",
+                                       message=f"Closing the strikes for {self.strategy} because of Stoploss hit")
+                    success = False
                     if self.strategy in ('SHORT_STRANGLE', 'IRON_CONDOR'):
-                        self.place_order(symbol=short_call_symbol,
-                                         quantity=self.quantity,
+                        success = self.place_order(symbol=short_call_symbol,
+                                         quantity=short_call_quantity,
                                          transaction_type="BUY",
                                          exchange='NFO')
-                        self.place_order(symbol=short_put_symbol,
-                                         quantity=self.quantity,
-                                         transaction_type="BUY",
-                                         exchange='NFO')
-                    if self.strategy in ('LONG_STRANGLE', 'IRON_CONDOR') \
-                            and self.config['adjust_hedges']:
-                        self.place_order(symbol=long_call_symbol,
-                                         quantity=self.quantity,
+                        self.logger.info(success)
+                        time.sleep(2)
+                        if success:
+                            success = self.place_order(symbol=short_put_symbol,
+                                             quantity=short_put_quantity,
+                                             transaction_type="BUY",
+                                             exchange='NFO')
+                            self.logger.info(success)
+                            time.sleep(2)
+                    if self.strategy in ('IRON_CONDOR') \
+                            and self.config['adjust_hedges']\
+                            and success:
+                        success = self.place_order(symbol=long_call_symbol,
+                                         quantity=long_call_quantity,
                                          transaction_type="SELL",
                                          exchange='NFO')
-                        self.place_order(symbol=long_put_symbol,
-                                         quantity=self.quantity,
+                        self.logger.info(success)
+                        time.sleep(2)
+                        if success:
+                            success = self.place_order(symbol=long_put_symbol,
+                                         quantity=long_put_quantity,
                                          transaction_type="SELL",
                                          exchange='NFO')
-                    return True
+                            self.logger.info(success)
+                    return success
                 else:
                     self.logger.info(f"Not closing the positions as the indicator is {self.config['close_on_stoploss']} in config")
             except Exception as e:
@@ -385,7 +415,7 @@ class handle_options:
         pnl = self.get_pnl()
         trail_profit = round(self.quantity * self.config['trailing_profit_multiplier'], 2)
 
-        self.logger.info(f"Current Profit: {pnl}, Lock Profit: {self.lock_profit}, Trail Profit: {trail_profit}")
+        self.logger.info(f"Current Profit: {pnl}, Locked Profit: {self.lock_profit}, Trail Profit: {trail_profit}")
 
         # ✅ Trailing stop hit condition
         if pnl <= self.lock_profit and self.lock_profit > 0:
@@ -396,54 +426,68 @@ class handle_options:
             if self.trail_profit_hit_count > self.config['trail_profit_threshold']:
                 self.logger.info("Closing the positions")
 
-                long_put_strike, long_put_symbol = next(
-                    ((p['strike'], p['tradingsymbol']) for p in self.positions
+                long_put_strike, long_put_symbol, long_put_quantity = next(
+                    ((p['strike'], p['tradingsymbol'], p['buy_quantity']-p['sell_quantity']) for p in self.positions
                      if p['option_type'] == 'PE' and p['transtype'] == 'buy'),
-                    (None, None)
+                    (None, None,None)
                 )
 
-                short_put_strike, short_put_symbol = next(
-                    ((p['strike'], p['tradingsymbol']) for p in self.positions
+                short_put_strike, short_put_symbol, short_put_quantity = next(
+                    ((p['strike'], p['tradingsymbol'], p['sell_quantity']-p['buy_quantity']) for p in self.positions
                      if p['option_type'] == 'PE' and p['transtype'] == 'sell'),
-                    (None, None)
+                    (None, None,None)
                 )
 
-                short_call_strike, short_call_symbol = next(
-                    ((p['strike'], p['tradingsymbol']) for p in self.positions
+                short_call_strike, short_call_symbol, short_call_quantity = next(
+                    ((p['strike'], p['tradingsymbol'], p['sell_quantity']-p['buy_quantity']) for p in self.positions
                      if p['option_type'] == 'CE' and p['transtype'] == 'sell'),
-                    (None, None)
+                    (None, None,None)
                 )
 
-                long_call_strike, long_call_symbol = next(
-                    ((p['strike'], p['tradingsymbol']) for p in self.positions
+                long_call_strike, long_call_symbol, long_call_quantity = next(
+                    ((p['strike'], p['tradingsymbol'], p['buy_quantity']-p['sell_quantity']) for p in self.positions
                      if p['option_type'] == 'CE' and p['transtype'] == 'buy'),
-                    (None, None)
+                    (None, None,None)
                 )
 
                 try:
                     if self.config['close_on_trailprofit']:
+                        success = False
+                        AlertMobile().send(heading=f"{self.user}_TrailProfit",
+                                           message=f"Closing the strikes for {self.strategy} because of trailprofit hit")
                         if self.strategy in ('SHORT_STRANGLE', 'IRON_CONDOR'):
-                            self.place_order(symbol=short_call_symbol,
-                                             quantity=self.quantity,
+                            success = self.place_order(symbol=short_call_symbol,
+                                             quantity=short_call_quantity,
                                              transaction_type="BUY",
                                              exchange='NFO')
-                            self.place_order(symbol=short_put_symbol,
-                                             quantity=self.quantity,
+                            self.logger.info(success)
+                            time.sleep(2)
+                            if success:
+                               success = self.place_order(symbol=short_put_symbol,
+                                             quantity=short_put_quantity,
                                              transaction_type="BUY",
                                              exchange='NFO')
+                               self.logger.info(success)
+                               time.sleep(2)
 
-                        if self.strategy in ('LONG_STRANGLE', 'IRON_CONDOR') \
-                            and self.config['adjust_hedges']:
-                            self.place_order(symbol=long_call_symbol,
-                                             quantity=self.quantity,
+                        if self.strategy == 'IRON_CONDOR' \
+                            and self.config['adjust_hedges']\
+                            and success:
+                            success = self.place_order(symbol=long_call_symbol,
+                                             quantity=long_call_quantity,
                                              transaction_type="SELL",
                                              exchange='NFO')
-                            self.place_order(symbol=long_put_symbol,
-                                             quantity=self.quantity,
+                            self.logger.info(success)
+                            time.sleep(2)
+                            if success:
+                                success = self.place_order(symbol=long_put_symbol,
+                                             quantity=long_put_quantity,
                                              transaction_type="SELL",
                                              exchange='NFO')
+                                self.logger.info(success)
+                        self.lock_profit = 0
+                        self.trail_profit_hit_count = 0
                         return True
-
                 except Exception as e:
                     self.logger.info(f"Failed to close positions: {e}")
 
@@ -456,7 +500,7 @@ class handle_options:
         # ✅ Update trailing lock profit
         if pnl >= (self.lock_profit + trail_profit):
             self.lock_profit = max(self.lock_profit, pnl - trail_profit)
-            self.logger.info(f"Locked Profit: {self.lock_profit}")
+            self.logger.info(f"Locking Profit: {self.lock_profit}")
         else:
             self.logger.info(
                 f"Will lock when P&L: {pnl} >= {self.lock_profit + trail_profit}"
@@ -468,7 +512,7 @@ class handle_options:
         symbol = current_symbol
         strike = new_strike = current_strike
         symbol_price = 0
-        while symbol_price <= (threshold_price * ((self.config['adjust_at']+15)/100)):
+        while symbol_price <= (threshold_price * ((self.config['adjust_at']+10)/100)):
             new_strike = strike-50 if option_type == 'CE' else strike+50
             symbol = symbol.replace(str(strike), str(new_strike))
             strike = new_strike
@@ -482,87 +526,135 @@ class handle_options:
         diff = (current_strike - new_strike) if option_type == 'CE' else (new_strike - current_strike)
         return symbol, diff
 
-
     def adjustments(self):
     #
-        long_put_strike, long_put_symbol, long_put_price = next(
-            ((p['strike'], p['tradingsymbol'], p['last_price']) for p in self.positions
+        long_put_strike, long_put_symbol, long_put_price, long_put_quantity = next(
+            ((p['strike'], p['tradingsymbol'], p['last_price'], p['buy_quantity']-p['sell_quantity']) for p in self.positions
              if p['option_type'] == 'PE' and p['transtype'] == 'buy'),
-            (None, None, None)
+            (None, None, None,None)
         )
 
-        short_put_strike, short_put_symbol, short_put_price = next(
-            ((p['strike'], p['tradingsymbol'], p['last_price']) for p in self.positions
+        short_put_strike, short_put_symbol, short_put_price, short_put_quantity = next(
+            ((p['strike'], p['tradingsymbol'], p['last_price'], p['sell_quantity']-p['buy_quantity']) for p in self.positions
              if p['option_type'] == 'PE' and p['transtype'] == 'sell'),
-            (None, None, None)
+            (None, None, None, None)
         )
 
-        short_call_strike, short_call_symbol, short_call_price = next(
-            ((p['strike'], p['tradingsymbol'], p['last_price']) for p in self.positions
+        short_call_strike, short_call_symbol, short_call_price, short_call_quantity = next(
+            ((p['strike'], p['tradingsymbol'], p['last_price'], p['sell_quantity']-p['buy_quantity']) for p in self.positions
              if p['option_type'] == 'CE' and p['transtype'] == 'sell'),
-            (None, None, None)
+            (None, None, None, None)
         )
 
-        long_call_strike, long_call_symbol, long_call_price = next(
-            ((p['strike'], p['tradingsymbol'], p['last_price']) for p in self.positions
+        long_call_strike, long_call_symbol, long_call_price, long_call_quantity = next(
+            ((p['strike'], p['tradingsymbol'], p['last_price'], p['buy_quantity']-p['sell_quantity']) for p in self.positions
              if p['option_type'] == 'CE' and p['transtype'] == 'buy'),
-            (None, None, None)
+            (None, None, None, None)
         )
 
         if short_call_price  > 0 and short_put_price > 0:
             if short_call_price <= short_put_price * self.config['adjust_at']/100:
                 self.logger.info(f"PE Price: {short_put_price}, CE Price: {short_call_price}. Market is going down. Adjustment is needed on CE side")
                 self.logger.info(f"as {int(min((short_call_price / short_put_price) * 100, (short_put_price / short_call_price) * 100))} is < {self.config['adjust_at']} (mentioned in config)")
-                self.logger.info(f"Buying {short_call_symbol} & Selling {self.underlying}{int(short_call_strike)-50}CE")
-                if self.config['adjustment']:
+                if self.config['adjustment'] and not self.nearing_strike\
+                        and datetime.today().weekday() in [int(n.strip()) for n in self.config['adjustment_days'].split(",")]:
                     new_short_symbol, diff = self.get_next_symbol(short_call_symbol, short_call_strike, 'CE',
                                                                   short_put_price)
-                    if self.strategy in ('SHORT_STRANGLE','IRON_CONDOR'):
-                        self.place_order(symbol=short_call_symbol,
-                                         quantity=self.quantity,
+                    success = False
+                    AlertMobile().send(heading=f"{self.user}_Adjustment",
+                                       message=f"Adjusting the strikes for {self.strategy}")
+                    if self.strategy == 'SHORT_STRANGLE' or \
+                      (self.strategy == 'IRON_CONDOR' and not self.config['adjust_hedges']):
+                        success = self.place_order(symbol=short_call_symbol,
+                                         quantity=short_call_quantity,
                                          transaction_type="BUY",
                                          exchange='NFO')
-                        self.place_order(symbol=new_short_symbol,
-                                         quantity=self.quantity,
+                        self.logger.info(success)
+                        time.sleep(2)
+                        if success:
+                            success = self.place_order(symbol=new_short_symbol,
+                                         quantity=short_call_quantity,
                                          transaction_type="SELL",
                                          exchange='NFO')
-                    if self.strategy in ('LONG_STRANGLE', 'IRON_CONDOR') \
-                            and self.config['adjust_hedges']:
-                        self.place_order(symbol=long_call_symbol,
-                                         quantity=self.quantity,
-                                         transaction_type="SELL",
-                                         exchange='NFO')
-                        self.place_order(symbol=long_call_symbol.replace(str(long_call_strike), str(int(long_call_strike)-diff)),
-                                         quantity=self.quantity,
+                            self.logger.info(success)
+                    if self.strategy == 'IRON_CONDOR' and \
+                       self.config['adjust_hedges']:
+                        success = self.place_order(symbol=short_call_symbol,
+                                         quantity=short_call_quantity,
                                          transaction_type="BUY",
                                          exchange='NFO')
+                        self.logger.info(success)
+                        time.sleep(2)
+                        if success:
+                            success = self.place_order(symbol=long_call_symbol,
+                                         quantity=long_call_quantity,
+                                         transaction_type="SELL",
+                                         exchange='NFO')
+                            self.logger.info(success)
+                            time.sleep(2)
+                            if success:
+                                success = self.place_order(symbol=long_call_symbol.replace(str(long_call_strike), str(int(long_call_strike)-diff)),
+                                         quantity=long_call_quantity,
+                                         transaction_type="BUY",
+                                         exchange='NFO')
+                                self.logger.info(success)
+                                time.sleep(2)
+                                if success:
+                                    success = self.place_order(symbol=new_short_symbol,
+                                         quantity=short_call_quantity,
+                                         transaction_type="SELL",
+                                         exchange='NFO')
+                                    self.logger.info(success)
                 #self.logger.info(f"Need to sell {long_call_symbol} & Need to buy {self.underlying}{int(long_call_strike)-50}CE")
             elif short_put_price <= short_call_price * self.config['adjust_at']/100:
                 self.logger.info(f"PE Price: {short_put_price}, CE Price: {short_call_price}. Market is going up. Adjustment is needed on PE side")
                 self.logger.info(f"as {int(min((short_call_price / short_put_price) * 100, (short_put_price / short_call_price) * 100))} is < {self.config['adjust_at']} (mentioned in config)")
-                self.logger.info(f"Buying {short_put_symbol} & Selling {self.underlying}{int(short_put_strike)+50}PE")
-                if self.config['adjustment']:
+                if self.config['adjustment'] and not self.nearing_strike:
                     new_short_symbol, diff = self.get_next_symbol(short_put_symbol, short_put_strike, 'PE',
                                                                   short_call_price)
-                    if self.strategy in ('SHORT_STRANGLE','IRON_CONDOR'):
-                        self.place_order(symbol=short_put_symbol,
-                                         quantity=self.quantity,
+                    success = False
+                    if self.strategy == 'SHORT_STRANGLE' or \
+                      (self.strategy == 'IRON_CONDOR' and not self.config['adjust_hedges']):
+                        success = self.place_order(symbol=short_put_symbol,
+                                         quantity=short_put_quantity,
                                          transaction_type="BUY",
                                          exchange='NFO')
-                        self.place_order(symbol=new_short_symbol,
-                                         quantity=self.quantity,
+                        self.logger.info(success)
+                        time.sleep(2)
+                        if success:
+                            success = self.place_order(symbol=new_short_symbol,
+                                         quantity=short_put_quantity,
                                          transaction_type="SELL",
                                          exchange='NFO')
-                    if self.strategy in ('LONG_STRANGLE', 'IRON_CONDOR') \
+                            self.logger.info(success)
+                    if self.strategy == 'IRON_CONDOR' \
                             and self.config['adjust_hedges']:
-                        self.place_order(symbol=long_put_symbol,
-                                         quantity=self.quantity,
-                                         transaction_type="SELL",
-                                         exchange='NFO')
-                        self.place_order(symbol=long_put_symbol.replace(str(long_put_strike), str(int(long_put_strike)+diff)),
-                                         quantity=self.quantity,
+                        success = self.place_order(symbol=short_put_symbol,
+                                         quantity=short_put_quantity,
                                          transaction_type="BUY",
                                          exchange='NFO')
+                        self.logger.info(success)
+                        time.sleep(2)
+                        if success:
+                            success = self.place_order(symbol=long_put_symbol,
+                                         quantity=long_put_quantity,
+                                         transaction_type="SELL",
+                                         exchange='NFO')
+                            self.logger.info(success)
+                            time.sleep(2)
+                            if success:
+                                success = self.place_order(symbol=long_put_symbol.replace(str(long_put_strike), str(int(long_put_strike)+diff)),
+                                         quantity=long_put_quantity,
+                                         transaction_type="BUY",
+                                         exchange='NFO')
+                                self.logger.info(success)
+                                time.sleep(2)
+                                if success:
+                                    success = self.place_order(symbol=new_short_symbol,
+                                         quantity=short_put_quantity,
+                                         transaction_type="SELL",
+                                         exchange='NFO')
+                                    self.logger.info(success)
                 #self.logger.info(f"Need to sell {long_put_symbol} & Need to buy {self.underlying}{int(long_put_strike)+50}PE")
             else:
                 self.logger.info(f"PE Price: {short_put_price}, CE Price: {short_call_price}. No need of any adjustments as {int(min((short_call_price / short_put_price) * 100, (short_put_price / short_call_price) * 100))} is > {self.config['adjust_at']} (mentioned in config)")
@@ -575,33 +667,45 @@ class handle_options:
         success = response.json()[0]
         if success:
             self.logger.info(f"{transaction_type} transaction for  {symbol} of {self.user} is successful")
+        else:
+            self.logger.info(f"{transaction_type} transaction for  {symbol} of {self.user} is failed")
+        return response.json()[0]
 
     def run(self):
-        self.logger.info("#" * 100)
-        self.get_config()
-        self.logger.info(f"Users in config: {self.config['users']}\nStarted to Watch user: {self.user}")
-        if self.user in self.config["users"].split(","):
-            self.process_positions()
-            self.analyze_positions()
-            if self.strategy in ('IRON_CONDOR', 'SHORT_STRANGLE'):
-                self.logger.info("-" * 25)
-                #self.logger.info("Got the positions. Proceeding for stop loss")
-                closed = self.check_stop_loss()
-                if not closed:
+        try:
+            self.logger.info("#" * 100)
+            self.config = get_config(config_file)
+            self.logger.info(f"Users in config: {self.config['users']}\nStarted to Watch user: {self.user}")
+            if self.user in self.config["users"].split(","):
+                if self.process_positions():
+                    pass
+                else:
+                    time.sleep(self.config.get('delay'))
+                    return False
+                self.analyze_positions()
+                if self.strategy in ('IRON_CONDOR', 'SHORT_STRANGLE'):
                     self.logger.info("-" * 25)
-                    #self.logger.info("Stop loss is verified. Proceeding to trail profit")
-                    closed = self.trail_profit()
+                    #self.logger.info("Got the positions. Proceeding for stop loss")
+                    closed = self.check_stop_loss()
                     if not closed:
                         self.logger.info("-" * 25)
-                        #self.logger.info("Trail Profit is done. Proceeding to check adjustments")
-                        self.adjustments()
-            self.put_config()
+                        #self.logger.info("Stop loss is verified. Proceeding to trail profit")
+                        closed = self.trail_profit()
+                        if not closed:
+                            self.logger.info("-" * 25)
+                            #self.logger.info("Trail Profit is done. Proceeding to check adjustments")
+                            self.adjustments()
+                put_config(config_file, "last_watched", datetime.now().strftime("%Y-%m-%d %H:%M"))
+        except Exception as e:
+            self.logger.info(f"Failed in the run() module with error: {e}")
             time.sleep(self.config.get('delay'))
-
+            return False
+        time.sleep(self.config.get('delay'))
+        return True
 def run_user(user, handle_obj):
     """Worker function to run each user's trading logic."""
     try:
-        handle_obj.run()
+        return handle_obj.run()
     except Exception as e:
         print(f"Error in thread for {user}: {e}")
 
@@ -610,7 +714,7 @@ if __name__ == "__main__":
 
     handle_objs = {}
     while True:
-        with open("Monitor/config.yaml", "r") as file:
+        with open(config_file, "r") as file:
             watch_config = yaml.safe_load(file)
         if watch_config:
             remove_users = []
