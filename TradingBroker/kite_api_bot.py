@@ -17,14 +17,14 @@ class KITE_CONNECT:
             self.logger = logging.getLogger(self.__class__.__name__)
             self.logger.info(f"logger created")
             self.credentials = credentials
-            self.logger.info(f"Got Credentials: {credentials}")
+            self.logger.info(f"Loaded credentials for user (api_key set: {bool(credentials.get('api_key'))})")
             self.kite = KiteConnect(api_key=credentials["api_key"])
-            self.logger.info(f"{datetime.now(ist).strftime('%Y%m%d %H:%M:%S')}: URL generated: {self.kite.login_url()}")
+            self.logger.info(f"{datetime.now(ist).strftime('%Y%m%d %H:%M:%S')}: Login URL generated")
             request_token = self.__auto_login(self.kite.login_url())
-            self.logger.info(f"{datetime.now(ist).strftime('%Y%m%d %H:%M:%S')}: Token received for API key : {request_token}")
+            self.logger.info(f"{datetime.now(ist).strftime('%Y%m%d %H:%M:%S')}: Request token received: {'yes' if request_token else 'no'}")
             data = self.kite.generate_session(request_token, api_secret=credentials["secret_key"])
             self.access_token = data.get("access_token") or data.get("sess_id")
-            self.logger.info(f"{datetime.now(ist).strftime('%Y%m%d %H:%M:%S')}: Session Connected Access token: {self.access_token}")
+            self.logger.info(f"{datetime.now(ist).strftime('%Y%m%d %H:%M:%S')}: Session connected (access_token set: {bool(self.access_token)})")
             self.kite.set_access_token(self.access_token)
         except Exception as e:
             self.logger.info(f"{datetime.now(ist).strftime('%Y%m%d %H:%M:%S')}: Login failed: {e}")
@@ -105,6 +105,28 @@ class KITE_CONNECT:
         except Exception as e:
             self.logger.error(f"Kite API (orders) failed with error: {e}")
         return (orders)
+
+    def fetch_trades(self):
+        """Fetch the day's executed trades from Kite (``kite.trades()``).
+
+        Each trade dict carries ``tradingsymbol``, ``exchange``,
+        ``transaction_type`` (``"BUY"`` / ``"SELL"``), ``quantity``
+        (in shares — already lot_size-multiplied), ``average_price``
+        (per share), ``trade_id`` / ``order_id``, and timestamps
+        (``fill_timestamp``, ``exchange_timestamp``).
+
+        Important: Kite returns trades for the **current trading day
+        only**. For historical FIFO P&L across multiple days, callers
+        must persist these locally — there is no official Kite
+        back-office API for the trade ledger beyond today.
+
+        Returns the raw list of trade dicts, or ``None`` on failure.
+        """
+        try:
+            return self.kite.trades()
+        except Exception as e:
+            self.logger.error(f"Kite API (trades) failed with error: {e}")
+            return None
     def fetch_option_chain(self):
         try:
             data = self.kite.instruments("NFO")
@@ -118,6 +140,41 @@ class KITE_CONNECT:
         except Exception as e:
             self.logger.error(f"Kite API (ltp) failed with error: {e}")
         return ltp
+
+    # Kite's /quote endpoint caps at 500 instruments per call. fetch_quotes
+    # chunks transparently so callers don't have to think about it (the
+    # recorder routinely asks for 600+ when covering 5 weekly expiries).
+    _KITE_QUOTE_BATCH = 500
+
+    def fetch_quotes(self, instruments):
+        """Batch-fetch full quotes (LTP, OHLC, OI, depth, volume) for a list
+        of instruments in ``EXCHANGE:SYMBOL`` form (e.g.
+        ``["NFO:NIFTY25SEP24500PE", ...]``).
+
+        Chunks the upstream ``kite.quote()`` call into batches of
+        ``_KITE_QUOTE_BATCH`` instruments since Kite caps each call at 500;
+        the returned dict is the union of all chunk responses, keyed by
+        the same instrument strings the caller passed in.
+
+        Returns None if any chunk fails (so the caller treats it as a hard
+        miss rather than silently working with partial data).
+        """
+        if not instruments:
+            return {}
+        merged = {}
+        for start in range(0, len(instruments), self._KITE_QUOTE_BATCH):
+            chunk = instruments[start:start + self._KITE_QUOTE_BATCH]
+            try:
+                quotes = self.kite.quote(chunk)
+            except Exception as e:
+                self.logger.error(
+                    f"Kite API (quote) failed for chunk "
+                    f"{start}-{start + len(chunk)} of {len(instruments)}: {e}"
+                )
+                return None
+            if quotes:
+                merged.update(quotes)
+        return merged
     def fetch_optoin_positions(self):
         positions_list = None
         try:
@@ -126,6 +183,68 @@ class KITE_CONNECT:
             self.logger.error(f"Kite API (positions) failed with error: {e}")
             return None
         return positions_list
+
+    # P&L fields Kite returns on each net-positions row. Pulled out as a
+    # constant so the fetcher below and any downstream aggregator stay in
+    # lockstep.
+    _KITE_PNL_FIELDS = ("pnl", "realised", "unrealised", "m2m")
+
+    def fetch_pnl(self):
+        """Fetch per-position P&L straight from Kite (``kite.positions()['net']``).
+
+        Built to replace the running ``<week>.pnl`` buckets currently
+        persisted in ``Monitor/config.yaml`` — those are an in-house
+        approximation that re-derives realized P&L from broker
+        ``closed_positions`` each cycle. This method returns the broker's
+        authoritative P&L view instead, so downstream code (brain.py, the
+        dashboard) can stop depending on the config buckets.
+
+        Each row in ``positions`` carries the four P&L breakdowns Kite
+        publishes::
+
+            pnl        # total P&L since the position was opened (cumulative)
+            realised   # realised portion (closed quantity x price delta)
+            unrealised # mark-to-market on still-open quantity
+            m2m        # intraday MTM change for the trading day
+
+        plus identification fields (``tradingsymbol``, ``exchange``,
+        ``product``, ``quantity``, ``average_price``, ``last_price``,
+        ``value``) so callers can group by expiry / underlying without a
+        second roundtrip.
+
+        ``totals`` is the sum of each of the four P&L fields across all
+        net positions — handy for a quick portfolio-level glance.
+
+        Returns ``None`` on failure (so the caller treats it as a hard
+        miss rather than silently working with stale data).
+        """
+        try:
+            raw = self.kite.positions()
+        except Exception as e:
+            self.logger.error(f"Kite API (positions/pnl) failed with error: {e}")
+            return None
+
+        net = raw.get("net", []) if isinstance(raw, dict) else []
+        positions = []
+        totals = {k: 0.0 for k in self._KITE_PNL_FIELDS}
+        for p in net:
+            row = {
+                "tradingsymbol": p.get("tradingsymbol"),
+                "exchange": p.get("exchange"),
+                "product": p.get("product"),
+                "quantity": p.get("quantity"),
+                "average_price": p.get("average_price"),
+                "last_price": p.get("last_price"),
+                "value": p.get("value"),
+            }
+            for k in self._KITE_PNL_FIELDS:
+                # Kite sends None on a fresh-cycle position before m2m is
+                # computed — coerce to 0 so the aggregate stays numeric.
+                v = p.get(k) or 0
+                row[k] = v
+                totals[k] += v
+            positions.append(row)
+        return {"positions": positions, "totals": totals}
     def place_order(self, symbol,quantity=1,transaction_type="BUY",exchange="NSE",order_type="MARKET",price="1",variety="regular",product="NRML",validity="DAY", market_protection=2):
         try:
             order_id = self.kite.place_order(tradingsymbol=symbol,
