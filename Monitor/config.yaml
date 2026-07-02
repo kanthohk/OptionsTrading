@@ -1,23 +1,58 @@
+api_info:
+  users: sashi
+  url: http://157.10.99.215:80
+  db_api_host: 157.10.99.215
+  db_api_port: 8080
+adjustment_info:
+  delta_low_close: 5
+  delta_low_open: 10
+  delta_high_close: 35
+  delta_high_open: 30
+  delta_partial_close: 25
+  minimum_distance_from_index: 1.7
+stoploss_info:
+  investment: 80000
+  max_loss_multiplier: 10
+  quantity_per_lot: 65
+monitor_info:
+  autotrade: false
+  delay: 30
+  last_watched: 2026-04-19 18:35
+  trading_holidays: []
+  order_retries: 5
+  order_retry_gap_seconds: 30
+trailprofit_info:
+  trail_profit_threshold: 1
+  trailing_profit_multiplier: 3
+first_week:
+  pnl: 0
+  adjust_hedges: true
+  adjustment: true
+  close_on_stoploss: false
+  close_on_trailprofit: false
+second_week:
+  pnl: 0
+  adjust_hedges: true
+  adjustment: true
+  close_on_stoploss: false
+  close_on_trailprofit: false
+third_week:
+  pnl: 0
+  adjust_hedges: true
+  adjustment: true
+  close_on_stoploss: false
+  close_on_trailprofit: false
+fourth_week:
+  pnl: 0
+  adjust_hedges: true
+  adjustment: true
+  close_on_stoploss: false
+  close_on_trailprofit: false
+fifth_week:
+  pnl: 0
+  adjust_hedges: true
+  adjustment: true
+  close_on_stoploss: false
+  close_on_trailprofit: false
 adjust_at: 30
-adjust_hedges: true
-adjustment: true
-close_on_stoploss: false
-close_on_trailprofit: false
-delay: 30
-last_watched: 2026-04-19 18:35
-max_loss_multiplier: 10
-minimum_distance_from_index: 400
-strike_range: 15,25
-trail_profit_threshold: 1
-trailing_profit_multiplier: 3
-users: sashi
-adjustment_days: 0,1,2
-investment: 80000
-url: http://157.10.99.215:80
-realized_pnl_0: 13211.25
-realized_pnl_1: 6488.375
-realized_pnl_2: -62
-realized_pnl_3: -62.0
-realized_pnl_4: 0.0
-quantity_per_lot: 65
-autotrade: false
+dry_run: false
