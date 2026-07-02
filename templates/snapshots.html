@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Market Snapshots</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #74ebd5, #ACB6E5);
+            padding: 10px;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 1400px;
+            margin: auto;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        h2 { text-align: center; color: #333; margin-top: 0; }
+        .topbar {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 15px; flex-wrap: wrap;
+        }
+        .topbar label { font-weight: bold; color: #444; }
+        .topbar select, .topbar input {
+            padding: 8px; border-radius: 6px; border: 1px solid #ccc;
+            font-size: 14px;
+        }
+        .topbar a {
+            margin-left: auto; color: #1976D2; text-decoration: none;
+            font-weight: bold;
+        }
+        button {
+            background: #4CAF50; color: white; border: none;
+            padding: 8px 16px; border-radius: 6px; cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: #45a049; }
+        .charts {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
+        .chart-card {
+            border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px;
+            background: #fafbfc;
+        }
+        .chart-card h3 { margin: 0 0 10px; font-size: 15px; color: #333; }
+        .chart-wrap { position: relative; height: 280px; }
+
+        .chain-controls {
+            display: flex; gap: 10px; align-items: center;
+            margin-bottom: 8px; flex-wrap: wrap;
+        }
+        .chain-controls .meta {
+            color: #555; font-size: 13px; margin-left: auto;
+        }
+        .table-wrap {
+            max-height: 460px; overflow: auto;
+            border: 1px solid #e0e0e0; border-radius: 8px;
+        }
+        table {
+            border-collapse: collapse; width: 100%; font-size: 13px;
+        }
+        thead th {
+            position: sticky; top: 0;
+            background: #f0f3f6; color: #333; padding: 8px;
+            border-bottom: 1px solid #d0d7de; text-align: right;
+        }
+        thead th:first-child, tbody td:first-child,
+        thead th.left, tbody td.left { text-align: left; }
+        tbody td { padding: 6px 8px; border-bottom: 1px solid #eef0f3; }
+        tbody tr:hover { background: #f7faff; }
+        tbody td.opt-CE { color: #1f7a3a; }
+        tbody td.opt-PE { color: #b22222; }
+        .status { font-size: 13px; color: #666; padding: 8px 0; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Market & Option Snapshots</h2>
+
+    <div class="topbar">
+        <label for="dateSelect">Date:</label>
+        <select id="dateSelect"></select>
+        <button id="reloadBtn" onclick="loadAll()">Reload</button>
+        <span class="status" id="statusMsg"></span>
+        <a href="/">← Dashboard</a>
+    </div>
+
+    <div class="charts">
+        <div class="chart-card">
+            <h3>Spot / Futures / India VIX</h3>
+            <div class="chart-wrap"><canvas id="marketChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>ATM IV — Weekly vs Monthly</h3>
+            <div class="chart-wrap"><canvas id="ivChart"></canvas></div>
+        </div>
+    </div>
+
+    <div class="chain-controls">
+        <label for="expirySelect">Expiry:</label>
+        <select id="expirySelect" onchange="renderChainTable()"></select>
+        <span class="meta" id="snapshotMeta"></span>
+    </div>
+    <div class="table-wrap">
+        <table id="chainTable">
+            <thead>
+                <tr>
+                    <th class="left">Symbol</th>
+                    <th>Strike</th>
+                    <th>Type</th>
+                    <th>LTP</th>
+                    <th>IV %</th>
+                    <th>Delta</th>
+                    <th>Theta/day</th>
+                    <th>Gamma</th>
+                    <th>Vega/1%</th>
+                    <th>OI</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <!-- Adjustments audit table: one row per automated inward / outward
+         / partial-reduce. Source = ``adjustments`` table in trading.db,
+         populated by helpers/risk_management.py after every successful
+         adjustment. Useful for analysing whether the bot's rolls are
+         actually helping P&L per expiry. -->
+    <h3 style="margin-top: 24px; color: #333;">Adjustments audit</h3>
+    <div class="chain-controls">
+        <label for="adjExpiryFilter">Expiry filter:</label>
+        <select id="adjExpiryFilter" onchange="renderAdjustmentsAll()">
+            <option value="">All expiries</option>
+        </select>
+        <span class="meta" id="adjMeta"></span>
+    </div>
+
+    <!-- Visual context for each adjustment: P&L (bars) against the
+         NIFTY 50 and India VIX values at the moment the adjustment
+         fired. Lets the operator see whether adjustments cluster
+         around vol spikes / drawdowns and whether they made money. -->
+    <div class="chart-card" style="margin-bottom: 12px;">
+        <h3>P&amp;L per adjustment · NIFTY 50 &amp; India VIX context</h3>
+        <div class="chart-wrap" style="height: 320px;">
+            <canvas id="adjChart"></canvas>
+        </div>
+        <!-- Legend for the orthogonal encoding: fill = sign of P&L,
+             border = which kind of adjustment fired. Three Chart.js
+             datasets would crowd the built-in legend, so we render the
+             type key as static HTML here. -->
+        <div style="margin-top: 8px; font-size: 11px; color: #555;
+                    display: flex; flex-wrap: wrap; gap: 14px; align-items: center;">
+            <span><b>Bar fill:</b>
+                <span style="background:rgba(31,122,58,0.65);padding:0 8px;color:white;">profit</span>
+                <span style="background:rgba(178,34,34,0.65);padding:0 8px;color:white;">loss</span>
+            </span>
+            <span><b>Bar border:</b>
+                <span style="border:2px solid #1565C0;padding:0 8px;">inward</span>
+                <span style="border:2px solid #E65100;padding:0 8px;">outward</span>
+                <span style="border:2px solid #00838F;padding:0 8px;">partial_reduce</span>
+            </span>
+        </div>
+    </div>
+
+    <div class="table-wrap" style="max-height: 360px;">
+        <table id="adjustmentsTable">
+            <thead>
+                <tr>
+                    <th class="left">Timestamp</th>
+                    <th class="left">Expiry</th>
+                    <th class="left">Side</th>
+                    <th class="left">Type</th>
+                    <th>Short&nbsp;Δ%<br>before→after</th>
+                    <th>Short&nbsp;strike<br>before→after</th>
+                    <th>Hedge&nbsp;strike<br>before→after</th>
+                    <th>NIFTY</th>
+                    <th>VIX</th>
+                    <th>Realized&nbsp;P&amp;L</th>
+                    <th class="left">Order IDs</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+let marketChart = null;
+let ivChart = null;
+let chainData = { snapshot_time: null, rows: [] };
+
+function fmt(v, digits = 2) {
+    if (v === null || v === undefined || v === "") return "";
+    const n = Number(v);
+    if (Number.isNaN(n)) return v;
+    return n.toFixed(digits);
+}
+
+function setStatus(msg) {
+    document.getElementById("statusMsg").innerText = msg;
+}
+
+async function fetchJSON(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    const data = await resp.json();
+    if (!Array.isArray(data) || !data[0]) {
+        throw new Error(data && data[1] ? data[1] : "API returned failure");
+    }
+    return data[1];
+}
+
+async function loadDates() {
+    try {
+        const dates = await fetchJSON("/api/snapshot_dates");
+        const sel = document.getElementById("dateSelect");
+        sel.innerHTML = "";
+        if (!dates.length) {
+            const opt = document.createElement("option");
+            opt.value = ""; opt.textContent = "(no data)";
+            sel.appendChild(opt);
+            return;
+        }
+        dates.forEach(d => {
+            const opt = document.createElement("option");
+            opt.value = d; opt.textContent = d;
+            sel.appendChild(opt);
+        });
+    } catch (e) {
+        setStatus("Failed to load dates: " + e.message);
+    }
+}
+
+function buildLineChart(canvasId, labels, datasets) {
+    const ctx = document.getElementById(canvasId).getContext("2d");
+    return new Chart(ctx, {
+        type: "line",
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: "index", intersect: false },
+            scales: {
+                x: { ticks: { maxTicksLimit: 12, autoSkip: true } },
+                y: { beginAtZero: false },
+            },
+            plugins: { legend: { position: "bottom" } },
+        },
+    });
+}
+
+async function loadMarket(date) {
+    const rows = await fetchJSON("/api/market_snapshots?date=" + encodeURIComponent(date));
+    const labels = rows.map(r => (r.snapshot_time || "").slice(11, 16));
+    const spot = rows.map(r => r.spot_price);
+    const fut = rows.map(r => r.fut_price);
+    const vix = rows.map(r => r.india_vix);
+    const weeklyIv = rows.map(r => r.weekly_atm_iv);
+    const monthlyIv = rows.map(r => r.monthly_atm_iv);
+
+    if (marketChart) marketChart.destroy();
+    if (ivChart) ivChart.destroy();
+
+    marketChart = buildLineChart("marketChart", labels, [
+        { label: "Spot", data: spot, borderColor: "#1976D2", backgroundColor: "#1976D2", yAxisID: "y", tension: 0.15, pointRadius: 0 },
+        { label: "Futures", data: fut, borderColor: "#388E3C", backgroundColor: "#388E3C", yAxisID: "y", tension: 0.15, pointRadius: 0 },
+        { label: "INDIA VIX", data: vix, borderColor: "#D32F2F", backgroundColor: "#D32F2F", yAxisID: "y1", tension: 0.15, pointRadius: 0 },
+    ]);
+    // Add a secondary axis for VIX (different scale than spot/fut)
+    marketChart.options.scales.y1 = {
+        position: "right", grid: { drawOnChartArea: false }, beginAtZero: false,
+    };
+    marketChart.update();
+
+    ivChart = buildLineChart("ivChart", labels, [
+        { label: "Weekly ATM IV %", data: weeklyIv, borderColor: "#FB8C00", backgroundColor: "#FB8C00", tension: 0.15, pointRadius: 0 },
+        { label: "Monthly ATM IV %", data: monthlyIv, borderColor: "#6A1B9A", backgroundColor: "#6A1B9A", tension: 0.15, pointRadius: 0 },
+    ]);
+}
+
+async function loadChain(date) {
+    chainData = await fetchJSON("/api/option_snapshot?date=" + encodeURIComponent(date));
+    const expirySel = document.getElementById("expirySelect");
+    expirySel.innerHTML = "";
+    const expiries = [...new Set(chainData.rows.map(r => r.expiry))];
+    if (!expiries.length) {
+        const opt = document.createElement("option");
+        opt.value = ""; opt.textContent = "(no chain)";
+        expirySel.appendChild(opt);
+    } else {
+        expiries.forEach(e => {
+            const opt = document.createElement("option");
+            opt.value = e; opt.textContent = e;
+            expirySel.appendChild(opt);
+        });
+    }
+    document.getElementById("snapshotMeta").innerText =
+        chainData.snapshot_time ? "Snapshot: " + chainData.snapshot_time : "No snapshot for date";
+    renderChainTable();
+}
+
+function renderChainTable() {
+    const exp = document.getElementById("expirySelect").value;
+    const tbody = document.querySelector("#chainTable tbody");
+    tbody.innerHTML = "";
+    const rows = chainData.rows.filter(r => r.expiry === exp);
+    for (const r of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+            `<td class="left">${r.symbol}</td>` +
+            `<td>${r.strike}</td>` +
+            `<td class="opt-${r.option_type}">${r.option_type}</td>` +
+            `<td>${fmt(r.ltp)}</td>` +
+            `<td>${fmt(r.iv)}</td>` +
+            `<td>${fmt(r.delta, 3)}</td>` +
+            `<td>${fmt(r.theta, 2)}</td>` +
+            `<td>${fmt(r.gamma, 5)}</td>` +
+            `<td>${fmt(r.vega, 3)}</td>` +
+            `<td>${r.oi ?? ""}</td>`;
+        tbody.appendChild(tr);
+    }
+}
+
+// ---- Adjustments audit ---------------------------------------------------
+
+let adjustmentsData = [];
+let adjChart = null;
+
+async function loadAdjustments() {
+    // Latest 200 rows newest-first. Filter UI is client-side over what
+    // was returned (no per-keystroke server hit).
+    try {
+        adjustmentsData = await fetchJSON("/api/adjustments?limit=200");
+    } catch (e) {
+        adjustmentsData = [];
+        document.getElementById("adjMeta").innerText = "Load failed: " + e.message;
+        return;
+    }
+    if (!Array.isArray(adjustmentsData)) adjustmentsData = [];
+
+    // Refresh the expiry filter from whatever expiries are in the data.
+    const sel = document.getElementById("adjExpiryFilter");
+    const prev = sel.value;
+    const expiries = Array.from(new Set(adjustmentsData.map(r => r.expiry))).sort();
+    sel.innerHTML = '<option value="">All expiries</option>'
+        + expiries.map(e => `<option value="${e}">${e}</option>`).join("");
+    if (expiries.includes(prev)) sel.value = prev;
+
+    document.getElementById("adjMeta").innerText =
+        adjustmentsData.length
+            ? adjustmentsData.length + " row(s); newest first"
+            : "No adjustments recorded yet";
+    renderAdjustmentsAll();
+}
+
+function renderAdjustmentsAll() {
+    // Single entry-point driven by the expiry filter dropdown. Fans the
+    // re-render out to:
+    //   - the audit table (newest-first listing),
+    //   - the P&L chart (oldest→newest on the time axis),
+    //   - and the top-of-page market chart (adjustment markers at the
+    //     spot price at each adjustment's timestamp).
+    renderAdjustments();
+    renderAdjustmentsChart();
+    _updateMarketChartWithAdjustments();
+}
+
+
+function _updateMarketChartWithAdjustments() {
+    // Overlay adjustment markers on the existing intraday NIFTY chart
+    // at the top of the page. Each marker sits at the spot price for
+    // the same HH:MM as the adjustment timestamp, so the operator can
+    // see WHERE on the day's spot curve each adjustment fired.
+    //
+    // The expiry filter narrows the marker set — selecting "first_week"
+    // shows only that week's adjustments on the market chart too. Date
+    // filtering happens against the date picker so adjustments on
+    // other days aren't shown on today's chart.
+    //
+    // Guards: silently no-ops if marketChart hasn't been built yet
+    // (Promise.all race) or if the date picker is empty.
+    if (!marketChart) return;
+    const date = document.getElementById("dateSelect").value;
+    if (!date) return;
+
+    const labels = marketChart.data.labels;
+    const spotDs = marketChart.data.datasets.find(d => d.label === 'Spot');
+    if (!spotDs) return;
+    const spot = spotDs.data;
+
+    // Build label→index map once for O(1) lookup. Duplicate HH:MM
+    // labels (two ticks per minute at 30s cadence) resolve to the
+    // first occurrence — the :00 tick. Close enough for visualization.
+    const labelToIdx = {};
+    labels.forEach((l, i) => { if (!(l in labelToIdx)) labelToIdx[l] = i; });
+
+    // Marker dataset: null at every label position EXCEPT where an
+    // adjustment landed; those positions get the spot price so the
+    // marker sits ON the spot curve.
+    const markerData = labels.map(() => null);
+    const filtered = _filteredAdjustments();
+    let placed = 0;
+    for (const adj of filtered) {
+        const ts = adj.timestamp || "";
+        // ``timestamp`` is ISO ('YYYY-MM-DDTHH:MM:SS+05:30') — slice
+        // 11:16 yields 'HH:MM' regardless of separator.
+        if (!ts.startsWith(date)) continue;
+        const hhmm = ts.slice(11, 16);
+        const idx = labelToIdx[hhmm];
+        if (idx != null) {
+            markerData[idx] = spot[idx];
+            placed++;
+        }
+    }
+
+    // Strip any prior marker dataset, then push the new one. Skip the
+    // push entirely when there are no markers to plot, so the legend
+    // doesn't grow an empty "Adjustment" entry.
+    marketChart.data.datasets = marketChart.data.datasets.filter(
+        d => d.label !== 'Adjustment'
+    );
+    if (placed > 0) {
+        marketChart.data.datasets.push({
+            type: 'line',
+            label: 'Adjustment',
+            data: markerData,
+            showLine: false,
+            pointRadius: 7,
+            pointHoverRadius: 9,
+            pointStyle: 'triangle',
+            backgroundColor: '#FFC107',
+            borderColor: '#FF6F00',
+            borderWidth: 2,
+            yAxisID: 'y',
+        });
+    }
+    marketChart.update('none');
+}
+
+function _filteredAdjustments() {
+    const exp = document.getElementById("adjExpiryFilter").value;
+    return exp
+        ? adjustmentsData.filter(r => r.expiry === exp)
+        : adjustmentsData;
+}
+
+function renderAdjustmentsChart() {
+    // Mixed bar+line: P&L bars (left axis), NIFTY 50 + India VIX as
+    // lines (right + hidden axes). The bot's data comes newest-first
+    // so we reverse for the chart — left-to-right time progression
+    // reads more naturally.
+    const filtered = _filteredAdjustments();
+    const rows = [...filtered].reverse();
+    const labels = rows.map(r => (r.timestamp || "").replace("T", " ").split(".")[0]);
+    const pnls = rows.map(r => r.realized_pnl);
+    const nifty = rows.map(r => r.nifty_spot);
+    const vix = rows.map(r => r.india_vix);
+    // Bar fill = sign of P&L (green/red); bar border = adjustment
+    // type (blue/orange/teal). Two orthogonal encodings on one mark.
+    const barColors = pnls.map(p => p == null ? 'rgba(120,120,120,0.5)'
+                                  : p > 0    ? 'rgba(31,122,58,0.65)'
+                                  : p < 0    ? 'rgba(178,34,34,0.65)'
+                                             : 'rgba(120,120,120,0.5)');
+    const ADJ_TYPE_COLORS = {
+        'inward':         '#1565C0',
+        'outward':        '#E65100',
+        'partial_reduce': '#00838F',
+    };
+    const borderColors = rows.map(r => ADJ_TYPE_COLORS[r.adjustment_type] || '#666');
+
+    // Cumulative P&L: running sum across the (chronologically-ordered)
+    // rows. Nulls in `pnls` are treated as 0 so the line stays
+    // continuous even if an audit row recorded no realized number.
+    let runningTotal = 0;
+    const cumPnl = pnls.map(p => {
+        if (p != null) runningTotal += p;
+        return runningTotal;
+    });
+
+    if (adjChart) { adjChart.destroy(); adjChart = null; }
+    if (!rows.length) return;
+
+    const ctx = document.getElementById("adjChart").getContext("2d");
+    adjChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                {
+                    type: 'bar',
+                    label: 'Realized P&L (₹)',
+                    data: pnls,
+                    backgroundColor: barColors,
+                    borderColor: borderColors,   // encodes adjustment_type
+                    borderWidth: 2,
+                    yAxisID: 'yPnl',
+                    order: 3,   // bars deepest behind
+                },
+                {
+                    type: 'line',
+                    label: 'Cumulative P&L (₹)',
+                    data: cumPnl,
+                    borderColor: '#7B1FA2',
+                    backgroundColor: '#7B1FA2',
+                    yAxisID: 'yPnl',
+                    tension: 0.15,
+                    pointRadius: 2,
+                    pointHoverRadius: 4,
+                    borderWidth: 2,
+                    order: 2,
+                },
+                {
+                    type: 'line',
+                    label: 'NIFTY 50',
+                    data: nifty,
+                    borderColor: '#1976D2',
+                    backgroundColor: '#1976D2',
+                    yAxisID: 'yNifty',
+                    tension: 0.15,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    order: 1,
+                },
+                {
+                    type: 'line',
+                    label: 'India VIX',
+                    data: vix,
+                    borderColor: '#D32F2F',
+                    backgroundColor: '#D32F2F',
+                    yAxisID: 'yVix',
+                    tension: 0.15,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    borderDash: [4, 3],
+                    order: 0,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { ticks: { maxTicksLimit: 12, autoSkip: true, font: { size: 10 } } },
+                yPnl: {
+                    type: 'linear',
+                    position: 'left',
+                    title: { display: true, text: 'Realized P&L (₹)' },
+                    beginAtZero: false,
+                },
+                yNifty: {
+                    type: 'linear',
+                    position: 'right',
+                    title: { display: true, text: 'NIFTY 50' },
+                    grid: { drawOnChartArea: false },   // don't clutter — bars own the gridlines
+                },
+                yVix: {
+                    // Dedicated scale so the VIX line is plotted on its
+                    // own range; ticks hidden because three visible axes
+                    // would crowd the chart. The legend + tooltip carry
+                    // the actual VIX value.
+                    type: 'linear',
+                    position: 'right',
+                    display: false,
+                },
+            },
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const v = ctx.parsed.y;
+                            if (v == null) return ctx.dataset.label + ": —";
+                            const digits = ctx.dataset.label === 'India VIX' ? 2
+                                         : ctx.dataset.label === 'NIFTY 50' ? 0 : 2;
+                            return `${ctx.dataset.label}: ${Number(v).toFixed(digits)}`;
+                        },
+                        // Append the adjustment_type as a footer when
+                        // hovering on a bar — encodes the third dimension
+                        // (already shown as bar border colour but the
+                        // tooltip makes it explicit).
+                        footer: (items) => {
+                            const idx = items?.[0]?.dataIndex;
+                            if (idx == null) return '';
+                            const r = rows[idx];
+                            if (!r) return '';
+                            return `type: ${r.adjustment_type || '—'}  ` +
+                                   `side: ${r.side || '—'}`;
+                        },
+                    },
+                },
+            },
+        },
+    });
+}
+
+function _arrow(before, after) {
+    if (before == null && after == null) return "";
+    return `${before ?? "—"}&nbsp;→&nbsp;${after ?? "—"}`;
+}
+
+function _deltaArrow(before, after) {
+    const bp = (before == null) ? null : (Math.abs(before) * 100).toFixed(1);
+    const ap = (after  == null) ? null : (Math.abs(after)  * 100).toFixed(1);
+    return _arrow(bp, ap);
+}
+
+function _pnlCell(pnl) {
+    if (pnl == null) return '<td>—</td>';
+    const cls = pnl > 0 ? 'style="color:#1f7a3a;font-weight:600;"'
+              : pnl < 0 ? 'style="color:#b22222;font-weight:600;"' : '';
+    const sign = pnl > 0 ? "+" : "";
+    return `<td ${cls}>${sign}${fmt(pnl, 2)}</td>`;
+}
+
+function renderAdjustments() {
+    const exp = document.getElementById("adjExpiryFilter").value;
+    const rows = exp
+        ? adjustmentsData.filter(r => r.expiry === exp)
+        : adjustmentsData;
+    const tbody = document.querySelector("#adjustmentsTable tbody");
+    tbody.innerHTML = "";
+    for (const r of rows) {
+        // Trim the timestamp to seconds, strip the ISO 'T'.
+        const ts = (r.timestamp || "").replace("T", " ").split(".")[0];
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+            `<td class="left">${ts}</td>` +
+            `<td class="left">${r.expiry || ""}</td>` +
+            `<td class="left opt-${r.side}">${r.side || ""}</td>` +
+            `<td class="left">${r.adjustment_type || ""}</td>` +
+            `<td>${_deltaArrow(r.short_delta_before, r.short_delta_after)}</td>` +
+            `<td>${_arrow(r.short_strike_before, r.short_strike_after)}</td>` +
+            `<td>${_arrow(r.hedge_strike_before, r.hedge_strike_after)}</td>` +
+            `<td>${fmt(r.nifty_spot, 0)}</td>` +
+            `<td>${fmt(r.india_vix, 2)}</td>` +
+            _pnlCell(r.realized_pnl) +
+            `<td class="left" style="font-family:monospace;font-size:11px;">` +
+                `${r.order_ids || ""}</td>`;
+        tbody.appendChild(tr);
+    }
+    if (rows.length === 0) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+            `<td colspan="11" style="text-align:center;color:#888;padding:14px;">` +
+            (exp ? `No adjustments for ${exp}` : "No adjustments recorded yet") +
+            `</td>`;
+        tbody.appendChild(tr);
+    }
+}
+
+async function loadAll() {
+    setStatus("Loading...");
+    const date = document.getElementById("dateSelect").value;
+    if (!date) { setStatus("No date available"); return; }
+    try {
+        await Promise.all([
+            loadMarket(date),
+            loadChain(date),
+            loadAdjustments(),
+        ]);
+        // Both market chart and adjustments data are ready — overlay
+        // the adjustment markers on the market chart. ``loadAdjustments``
+        // already calls ``renderAdjustmentsAll`` (which also tries
+        // this), but it may have raced ahead of ``loadMarket`` and
+        // hit the ``!marketChart`` guard. Calling once more here
+        // closes that race.
+        _updateMarketChartWithAdjustments();
+        setStatus("");
+    } catch (e) {
+        setStatus("Load failed: " + e.message);
+    }
+}
+
+(async function init() {
+    await loadDates();
+    await loadAll();
+})();
+</script>
+</body>
+</html>

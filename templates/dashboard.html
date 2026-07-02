@@ -3,121 +3,602 @@
 <head>
     <title id="title"></title>
     <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #5b8def 0%, #6677d8 45%, #8c75c4 100%);
+            --card-bg: #ffffff;
+            --card-border: #e5e7eb;
+            --text-primary: #111827;
+            --text-secondary: #4b5563;
+            --text-muted: #9ca3af;
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --success: #10B981;
+            --success-hover: #059669;
+            --danger: #EF4444;
+            --danger-hover: #DC2626;
+            --info: #3B82F6;
+            --info-hover: #2563EB;
+            --warning: #F59E0B;
+            /* Subtle tinted backgrounds (≈4% saturation) used to color cards
+               without overwhelming the data inside. */
+            --tint-info:    #EFF6FF;
+            --tint-success: #ECFDF5;
+            --tint-danger:  #FEF2F2;
+            --tint-warning: #FFFBEB;
+            --tint-primary: #EEF2FF;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+            --radius: 10px;
+        }
+        * { box-sizing: border-box; }
         body {
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #74ebd5, #ACB6E5);
-            padding: 10px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background: var(--bg-gradient);
+            padding: 14px;
+            margin: 0;
+            color: var(--text-primary);
         }
-
         .container {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            max-width: 1200px;
-            margin: auto;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            background: var(--card-bg);
+            padding: 18px 22px 22px;
+            border-radius: 14px;
+            max-width: 100%;
+            margin: 0;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.12);
         }
 
-        h2 {
-            text-align: center;
-            color: #333;
+        /* ---- Header ---- */
+        .header {
+            display: flex; align-items: center; gap: 14px;
+            padding-bottom: 14px; margin-bottom: 16px;
+            border-bottom: 1px solid var(--card-border);
+            flex-wrap: wrap;
         }
+        .header h1 {
+            margin: 0; font-size: 24px; color: var(--text-primary);
+            font-weight: 600;
+        }
+        .header .sub {
+            color: var(--text-muted); font-size: 13px; font-weight: 500;
+            padding: 4px 12px; background: #f3f4f6; border-radius: 999px;
+        }
+        .header .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+        .header .pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 12px; border-radius: 999px;
+            font-size: 13px; font-weight: 600;
+            background: #f3f4f6; color: var(--text-secondary);
+        }
+        .header .pill .dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--text-muted);
+        }
+        .header .pill.ok { background: #ECFDF5; color: #065F46; }
+        .header .pill.ok .dot { background: var(--success); }
+        .header .pill.off { background: #FEF2F2; color: #991B1B; }
+        .header .pill.off .dot { background: var(--danger); }
+        .header .link {
+            color: var(--info); text-decoration: none; font-weight: 600;
+            font-size: 14px; padding: 5px 10px; border-radius: 6px;
+        }
+        .header .link:hover { background: #EFF6FF; }
 
-        .row {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
-            align-items: center;
-            }
-        label {
-            font-weight: bold;
-            display: block;
-            margin-bottom: 5px;
-            color: #444;
+        /* ---- Cards grid ---- */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 16px;
         }
+        @media (max-width: 1000px) { .grid { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 700px)  { .grid { grid-template-columns: 1fr; } }
 
-        input, textarea {
-            width: 100%;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-            font-size: 14px;
+        .card {
+            background: #fafbfc;
+            border: 1px solid var(--card-border);
+            border-top: 3px solid var(--primary);
+            border-radius: var(--radius);
+            padding: 14px;
+            display: flex; flex-direction: column; gap: 10px;
+            transition: transform 0.15s, box-shadow 0.15s;
         }
+        .card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+        .card h3 {
+            margin: 0; font-size: 15px; font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        /* Semantic card tints — config (indigo), order entry (green) */
+        .card.card-config {
+            background: linear-gradient(135deg, var(--tint-primary), #fafbfc);
+            border-top-color: var(--primary);
+        }
+        .card.card-config h3 { color: var(--primary); }
+        .card.card-order {
+            background: linear-gradient(135deg, var(--tint-success), #fafbfc);
+            border-top-color: var(--success);
+        }
+        .card.card-order h3 { color: var(--success-hover); }
+        .card.card-iron {
+            background: linear-gradient(135deg, var(--tint-success), #fafbfc);
+            border-top-color: var(--success);
+        }
+        .card.card-iron h3 { color: var(--success-hover); }
+        .ic-meta {
+            font-size: 13px; color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+        .field { display: flex; flex-direction: column; gap: 4px; }
+        .field label {
+            font-size: 13px; font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.4px;
+        }
+        .field input {
+            padding: 9px 12px; font-size: 15px;
+            border: 1px solid var(--card-border); border-radius: 6px;
+            background: white; color: var(--text-primary);
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .field input:focus {
+            outline: none; border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79,70,229,0.15);
+        }
+        .field input[readonly] { background: #f9fafb; color: var(--text-secondary); }
 
-        textarea {
-            height: 300px;
-        }
+        .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
-        .button-row {
-            text-align: right;
-        }
+        .actions { display: flex; gap: 8px; margin-top: auto; flex-wrap: wrap; }
+        .actions.right { justify-content: flex-end; }
 
         button {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
+            border: none; cursor: pointer;
+            padding: 9px 16px;
             border-radius: 6px;
-            cursor: pointer;
+            font-size: 14px; font-weight: 600;
+            transition: background 0.15s, transform 0.05s;
+            color: white;
+        }
+        button:active { transform: translateY(1px); }
+        button.primary { background: var(--primary); }
+        button.primary:hover { background: var(--primary-hover); }
+        button.success { background: var(--success); }
+        button.success:hover { background: var(--success-hover); }
+        button.danger { background: var(--danger); }
+        button.danger:hover { background: var(--danger-hover); }
+        button.info { background: var(--info); }
+        button.info:hover { background: var(--info-hover); }
+        button.ghost {
+            background: white; color: var(--text-secondary);
+            border: 1px solid var(--card-border);
+        }
+        button.ghost:hover { background: #f3f4f6; }
+
+        /* ---- Response panel ---- */
+        .response-card {
+            background: #fafbfc;
+            border: 1px solid var(--card-border);
+            border-top: 3px solid #64748B;
+            border-radius: var(--radius);
+            padding: 14px;
+        }
+        .response-card .head h3 { color: #475569; }
+        .response-card .head {
+            display: flex; align-items: center;
+            margin-bottom: 8px;
+        }
+        .response-card .head h3 {
+            margin: 0; font-size: 15px; font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .response-card .head .clearbtn {
+            margin-left: auto;
+        }
+        #responseBox {
+            width: 100%; min-height: 320px;
+            background: #0f172a; color: #e2e8f0;
+            font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            font-size: 13px; line-height: 1.5;
+            padding: 12px 14px;
+            border: 1px solid #1e293b; border-radius: 8px;
+            resize: vertical;
+        }
+        #responseBox:focus { outline: none; }
+
+        /* ---- Market overview (compact strip at top) ---- */
+        .market-overview {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        @media (max-width: 950px) { .market-overview { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 600px) { .market-overview { grid-template-columns: 1fr; } }
+        .market-card {
+            background: linear-gradient(135deg, #ffffff, #f4f6fb);
+            border: 1px solid var(--card-border);
+            border-top: 3px solid var(--info);
+            border-radius: var(--radius);
+            padding: 8px 14px 10px;
+            display: grid;
+            grid-template-columns: auto 1fr;
+            align-items: center;
+            gap: 4px 14px;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .market-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+        #card-nifty {
+            background: linear-gradient(135deg, var(--tint-info), #ffffff);
+            border-top-color: #3B82F6;
+        }
+        #card-nifty .symbol { color: #1D4ED8; }
+        #card-banknifty {
+            background: linear-gradient(135deg, var(--tint-warning), #ffffff);
+            border-top-color: #F59E0B;
+        }
+        #card-banknifty .symbol { color: #B45309; }
+        #card-vix {
+            background: linear-gradient(135deg, var(--tint-danger), #ffffff);
+            border-top-color: #EF4444;
+        }
+        #card-vix .symbol { color: #B91C1C; }
+        .market-card .top {
+            display: flex; align-items: baseline; gap: 8px;
+            grid-column: 1 / -1;
+        }
+        .market-card .symbol {
+            font-size: 13px; font-weight: 700; color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.6px;
+        }
+        .market-card .last {
+            margin-left: auto;
+            font-size: 22px; font-weight: 700; color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+        .market-card .day-row {
+            display: flex; align-items: center; gap: 14px;
             font-size: 14px;
+            grid-column: 1;
+        }
+        .market-card .day-row .lbl {
+            font-size: 11px; font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
+            margin-right: 4px;
+        }
+        .market-card .day-row .val {
+            font-weight: 600; font-variant-numeric: tabular-nums;
+        }
+        .market-card .horizons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+            grid-column: 2;
+            border-left: 1px dashed #e5e7eb;
+            padding-left: 14px;
+        }
+        .market-card .h-cell {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 2px;
+        }
+        .market-card .h-cell .lbl {
+            font-size: 11px; font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .market-card .h-cell .val {
+            font-size: 14px; font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .up { color: var(--success); }
+        .down { color: var(--danger); }
+        .neutral { color: var(--text-muted); }
+
+        /* Single-column main row — the left strikes strip was removed;
+           the center stack now takes the full container width. */
+        .main-row {
+            display: block;
+            margin-bottom: 16px;
         }
 
-        button:hover {
-            background: #45a049;
+        /* Inline "Loading…" spinner shown in the Iron Condor and Open
+           Positions cards while a user-triggered fetch is in flight
+           (Refresh click or expiry-dropdown change). The 30s auto-
+           refresh does NOT show this, so the UI doesn't flicker on
+           every silent poll. */
+        .loading-inline {
+            display: inline-flex; align-items: center; gap: 6px;
+            color: var(--text-muted); font-size: 12px; font-weight: 500;
+            margin-left: 6px;
+        }
+        .loading-inline .spinner {
+            width: 12px; height: 12px;
+            border: 2px solid #e5e7eb;
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            display: inline-block;
+            animation: dash-spin 0.7s linear infinite;
+        }
+        @keyframes dash-spin { to { transform: rotate(360deg); } }
+
+        /* Center stack: action cards then response */
+        .center-stack { display: flex; flex-direction: column; gap: 14px; }
+        .center-stack .actions-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+        @media (max-width: 700px) {
+            .center-stack .actions-row { grid-template-columns: 1fr; }
         }
 
-        .response-box {
-            margin-top: 20px;
+        /* Open-positions card */
+        .positions-card {
+            background: linear-gradient(135deg, var(--tint-warning), #fafbfc);
+            border: 1px solid var(--card-border);
+            border-top: 3px solid var(--warning);
+            border-radius: var(--radius);
+            padding: 14px;
+            display: flex; flex-direction: column; gap: 10px;
         }
+        .positions-card h3 {
+            margin: 0; font-size: 15px; font-weight: 700;
+            color: #B45309;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .positions-card .meta {
+            font-size: 13px; color: var(--text-muted);
+        }
+        .positions-table {
+            width: 100%; border-collapse: collapse; font-size: 14px;
+            font-variant-numeric: tabular-nums;
+        }
+        .positions-table th, .positions-table td {
+            padding: 7px 10px; text-align: right;
+        }
+        .positions-table th:first-child,
+        .positions-table td:first-child { text-align: left; }
+        .positions-table th {
+            font-size: 12px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.4px;
+            border-bottom: 1px solid var(--card-border);
+        }
+        .positions-table tbody tr:hover { background: rgba(0,0,0,0.03); }
+        .positions-table tbody td.empty {
+            color: var(--text-muted); text-align: center; padding: 12px;
+        }
+        .positions-table .long-row td:nth-child(2) { color: var(--success-hover); }
+        .positions-table .short-row td:nth-child(2) { color: var(--danger-hover); }
+        /* In the Iron Condor card the table's column 2 is Symbol (not
+           Quantity), so colour the Role column instead and reset the
+           inherited Symbol tint. */
+        .card-iron .positions-table .long-row td:first-child {
+            color: var(--success-hover); font-weight: 600;
+        }
+        .card-iron .positions-table .short-row td:first-child {
+            color: var(--danger-hover); font-weight: 600;
+        }
+        .card-iron .positions-table .long-row td:nth-child(2),
+        .card-iron .positions-table .short-row td:nth-child(2) {
+            color: var(--text-primary);
+        }
+        .positions-table td.pnl-up   { color: var(--success-hover); font-weight: 600; }
+        .positions-table td.pnl-down { color: var(--danger-hover);  font-weight: 600; }
+        .positions-table tfoot td {
+            font-weight: 700;
+            border-top: 2px solid var(--card-border);
+            padding-top: 8px;
+        }
+        .positions-table tfoot .sum-label { text-align: right; color: var(--text-secondary); }
 
-        .response-box textarea {
-            height: 350px;
-            background: #f4f6f8;
+        /* Inline expiry-picker shown in the Iron Condor and Open Positions cards */
+        .expiry-row {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 13px;
+        }
+        .expiry-row label {
+            font-size: 11px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .expiry-row select {
+            padding: 5px 8px; font-size: 13px;
+            border: 1px solid var(--card-border); border-radius: 6px;
+            background: white; color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+        .expiry-row select:focus {
+            outline: none; border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79,70,229,0.15);
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2><div id="heading"></div></h2>
-    <h3>Rs.800 per lot or 6+6 points</h3>
-    <div class="row">
-        <button onclick="loadConfig()" style="background:#9C27B0; margin-right:10px;">Load Config</button>
-        <input type="text" id="ConfigKey" placeholder="Config key">
-        <input id="ConfigValue" placeholder="Config Value">
-        <button onclick="putConfig()" style="background:#9C27B0; margin-right:10px;">Update Config</button>
+    <!-- Header -->
+    <div class="header">
+        <h1 id="heading"></h1>
+        <span class="sub">Rs.800 per lot · 6+6 points</span>
+        <div class="right">
+            <span class="pill" id="StatusPill"><span class="dot"></span><span id="Status">Status: —</span></span>
+            <span class="pill" id="LastRunPill">⏱ <span id="LastRun">Last Run: —</span></span>
+            <a class="link" href="/snapshots">Snapshots →</a>
+        </div>
     </div>
 
+    <!-- Market overview -->
+    <div class="market-overview">
+        <div class="market-card" id="card-nifty">
+            <div class="top">
+                <span class="symbol">NIFTY 50</span>
+                <span class="last" id="nifty-last">—</span>
+            </div>
+            <div class="day-row">
+                <span><span class="lbl">Open</span><span class="val" id="nifty-open">—</span></span>
+                <span><span class="lbl">Change</span><span class="val" id="nifty-change">—</span></span>
+            </div>
+            <div class="horizons">
+                <div class="h-cell"><span class="lbl">3d</span><span class="val" id="nifty-3d">—</span></div>
+                <div class="h-cell"><span class="lbl">1w</span><span class="val" id="nifty-1w">—</span></div>
+                <div class="h-cell"><span class="lbl">1m</span><span class="val" id="nifty-1m">—</span></div>
+                <div class="h-cell"><span class="lbl">3m</span><span class="val" id="nifty-3m">—</span></div>
+            </div>
+        </div>
+        <div class="market-card" id="card-banknifty">
+            <div class="top">
+                <span class="symbol">BANKNIFTY</span>
+                <span class="last" id="banknifty-last">—</span>
+            </div>
+            <div class="day-row">
+                <span><span class="lbl">Open</span><span class="val" id="banknifty-open">—</span></span>
+                <span><span class="lbl">Change</span><span class="val" id="banknifty-change">—</span></span>
+            </div>
+            <div class="horizons">
+                <div class="h-cell"><span class="lbl">3d</span><span class="val" id="banknifty-3d">—</span></div>
+                <div class="h-cell"><span class="lbl">1w</span><span class="val" id="banknifty-1w">—</span></div>
+                <div class="h-cell"><span class="lbl">1m</span><span class="val" id="banknifty-1m">—</span></div>
+                <div class="h-cell"><span class="lbl">3m</span><span class="val" id="banknifty-3m">—</span></div>
+            </div>
+        </div>
+        <div class="market-card" id="card-vix">
+            <div class="top">
+                <span class="symbol">INDIA VIX</span>
+                <span class="last" id="vix-last">—</span>
+            </div>
+            <div class="day-row">
+                <span><span class="lbl">Open</span><span class="val" id="vix-open">—</span></span>
+                <span><span class="lbl">Change</span><span class="val" id="vix-change">—</span></span>
+            </div>
+            <div class="horizons">
+                <div class="h-cell"><span class="lbl">3d</span><span class="val" id="vix-3d">—</span></div>
+                <div class="h-cell"><span class="lbl">1w</span><span class="val" id="vix-1w">—</span></div>
+                <div class="h-cell"><span class="lbl">1m</span><span class="val" id="vix-1m">—</span></div>
+                <div class="h-cell"><span class="lbl">3m</span><span class="val" id="vix-3m">—</span></div>
+            </div>
+        </div>
+    </div>
 
-    <div class="row">
-        <button onclick="watchLog()" style="background:#2196F3; margin-right:10px;">Get Watch Log</button>
-            <input type="text" id="Symbol" placeholder="NIFTY26APR/2642125000PE">
-            <input type="text" id="Quantity" placeholder="Quantity-650">
-        <button onclick="place('BUY')" style="background:#4CAF50; margin-right:10px;">Buy Order</button>
-        <button onclick="place('SELL')" style="background:#4CAF50; margin-right:10px;">Sell Order</button>
-    </div>
-    <div class="row">
-        <input type="text" id="index" placeholder="NIFTY 50" value="NIFTY 50">
-        <input type="text" id="expiry" placeholder="21426 or 26APR">   
-        <button onclick="option_chain()" style="background:#4CAF50; margin-right:10px;">Option Chain</button>
-    </div>
-    <div class="row">
-        <label id="Status">Status: </label>
-        <label style="margin-left:auto;" id="LastRun">Last Run: </label>
-    </div>
+    <!-- Center stack: actions row (open positions + iron condor),
+         config card, response panel. The left "Next Weekly strikes"
+         strip was removed — its data was informational only; the
+         Iron Condor card already surfaces the picked strikes with
+         better granularity. -->
+    <div class="main-row">
+        <div class="center-stack">
+            <div class="actions-row">
+                <div class="positions-card">
+                    <h3 id="op-title">Open Position</h3>
+                    <div class="expiry-row">
+                        <label for="op-expiry-select">Expiry</label>
+                        <select id="op-expiry-select" onchange="refreshOpenPositions()"></select>
+                        <span class="loading-inline" id="op-loading" style="display:none;">
+                            <span class="spinner"></span> Loading…
+                        </span>
+                    </div>
+                    <div class="meta" id="op-meta">Loading positions…</div>
+                    <table class="positions-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Quantity</th>
+                                <th>Avg Price</th>
+                                <th>Last Price</th>
+                                <th>δ %</th>
+                                <th>P&amp;L</th>
+                            </tr>
+                        </thead>
+                        <tbody id="op-rows"></tbody>
+                        <tfoot id="op-foot"></tfoot>
+                    </table>
+                    <div class="actions right">
+                        <button class="ghost" onclick="refreshOpenPositions()">Refresh</button>
+                        <button class="danger" onclick="closeOpenPositions()">Close All</button>
+                    </div>
+                </div>
+                <div class="card card-iron">
+                    <h3>Iron Condor</h3>
+                    <div class="expiry-row">
+                        <label for="ic-expiry-select">Expiry</label>
+                        <select id="ic-expiry-select" onchange="refreshIronCondor()"></select>
+                        <span class="loading-inline" id="ic-loading" style="display:none;">
+                            <span class="spinner"></span> Loading…
+                        </span>
+                    </div>
+                    <div class="ic-meta" id="ic-meta">Loading preset…</div>
+                    <table class="positions-table">
+                        <thead>
+                            <tr>
+                                <th>Role</th>
+                                <th>Symbol</th>
+                                <th>Strike</th>
+                                <th>LTP</th>
+                                <th>δ %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ic-rows"></tbody>
+                    </table>
+                    <div class="field">
+                        <label>Quantity</label>
+                        <input type="text" id="ic-quantity" value="650">
+                    </div>
+                    <div class="actions right">
+                        <button class="ghost" onclick="refreshIronCondor()">Refresh</button>
+                        <button class="success" onclick="deployIronCondor()">Deploy</button>
+                    </div>
+                </div>
+            </div>
+            <div class="card card-config">
+                <h3>Config</h3>
+                <div class="row2">
+                    <div class="field">
+                        <label>Key</label>
+                        <input type="text" id="ConfigKey" placeholder="autotrade">
+                    </div>
+                    <div class="field">
+                        <label>Value</label>
+                        <input id="ConfigValue" placeholder="true">
+                    </div>
+                </div>
+                <div class="actions right">
+                    <button class="info" onclick="watchLog()">Watch Log</button>
+                    <button class="ghost" onclick="loadConfig()">Load</button>
+                    <button class="primary" onclick="putConfig()">Update</button>
+                </div>
+            </div>
 
-    <div class="response-box">
-        <label>Response</label>
-        <textarea id="responseBox" readonly></textarea>
+            <div class="response-card">
+                <div class="head">
+                    <h3>Response</h3>
+                    <button class="ghost clearbtn" onclick="document.getElementById('responseBox').value='';">Clear</button>
+                </div>
+                <textarea id="responseBox" readonly></textarea>
+            </div>
+        </div>
+
     </div>
 </div>
 
+<!-- Injected by Flask from Monitor/config.yaml (api_info.users / api_info.url)
+     so the dashboard doesn't carry a hard-coded copy of the deployment's
+     identity. The values live in a JSON script block (not as Jinja
+     expressions inside the JS file) so editor JS parsers don't choke. -->
+<script id="dashboard-config" type="application/json">
+{
+    "username": {{ dashboard_username | tojson }},
+    "usernameLower": {{ dashboard_username_lower | tojson }},
+    "ipaddress": {{ dashboard_host | tojson }},
+    "port": {{ dashboard_port | tojson }}
+}
+</script>
 <script>
-let username = "Sashi";
-let ipaddress = "157.10.99.215";
-let port = "80";
-document.getElementById("heading").innerText = username + " Trade Monitor"
-document.getElementById("title").innerText = username + " Trading bot"
+const _DASH_CFG = JSON.parse(document.getElementById("dashboard-config").textContent);
+let username = _DASH_CFG.username;
+let usernameLower = _DASH_CFG.usernameLower;
+let ipaddress = _DASH_CFG.ipaddress;
+let port = _DASH_CFG.port;
+document.getElementById("heading").innerText = username + " Trade Monitor";
+document.getElementById("title").innerText = username + " Trading bot";
 
 function callAPI(param) {
     document.getElementById("responseBox").value = "Firing the API request for " + param + "......."
@@ -140,10 +621,9 @@ function loadConfig() {
     fetch("http://" + ipaddress + ":" + port + "/get_watch_config")
     .then(response => response.json())
     .then(data => {
-        // Show response
-        document.getElementById("LastRun").textContent = 'Last Run: ' + JSON.stringify(data[1].last_watched, null, 2).replace('"', '').replace('"', '');
+        const lastWatched = (data[1] && data[1].monitor_info && data[1].monitor_info.last_watched) || "—";
+        document.getElementById("LastRun").textContent = 'Last Run: ' + lastWatched;
         document.getElementById("responseBox").value = JSON.stringify(data[1], null, 2);
-        
     })
     .catch(error => {
         document.getElementById("responseBox").value = "Error: " + error;
@@ -156,9 +636,7 @@ function putConfig() {
     fetch("http://" + ipaddress + ":" + port + "/put_watch_config?" + key1 + "=" + value1)
     .then(response => response.json())
     .then(data => {
-        // Show response
         document.getElementById("responseBox").value = JSON.stringify(data, null, 2);
-
     })
     .catch(error => {
         document.getElementById("responseBox").value = "Error: " + error;
@@ -166,11 +644,10 @@ function putConfig() {
 }
 
 function watchLog() {
-    user = username.toLowerCase();
+    user = usernameLower;
     fetch("http://" + ipaddress + ":" + port + "/get_watch_log?user=" + user)
     .then(response => response.json())
     .then(data => {
-        // Show response
         const responseBox = document.getElementById("responseBox");
         responseBox.value = JSON.stringify(data[1], null, 2).replace(/\\n/g, "\n");
         responseBox.scrollTop = responseBox.scrollHeight;
@@ -179,56 +656,442 @@ function watchLog() {
         document.getElementById("responseBox").value = "Error: " + error;
     });
 }
-function option_chain() {
-    index1 = document.getElementById("index").value
-    expiry1 = document.getElementById("expiry").value
-    document.getElementById("responseBox").value = "Fetching the option chain please wait ..."
-    fetch("http://" + ipaddress + ":" + port + "/get_optionchain/" + index1 + "/" + expiry1)
-    .then(response => response.json())
-    .then(data => {
-        // Show response
-        document.getElementById("responseBox").value = JSON.stringify(data, null, 2);
-        document.getElementById("PESymbol").value = JSON.stringify(data[2].PE, null, 2).replace('"','').replace('"','');
-        document.getElementById("CESymbol").value = JSON.stringify(data[2].CE, null, 2).replace('"','').replace('"','');
 
+// ---- Expiry selector helper -------------------------------------------
+// Populate <select> with the API-supplied expiry list. Preserve the user's
+// current pick across the 30s auto-refresh; if their pick has aged out
+// (e.g. expired today), fall back to whatever expiry the server chose.
+function _syncExpirySelect(selectId, expiries, chosen) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    const userPick = sel.value;
+    const list = Array.isArray(expiries) ? expiries : [];
+    sel.innerHTML = "";
+    if (list.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = ""; opt.textContent = "—";
+        sel.appendChild(opt);
+        sel.disabled = true;
+        return;
+    }
+    sel.disabled = false;
+    for (const e of list) {
+        const opt = document.createElement("option");
+        opt.value = e; opt.textContent = e;
+        sel.appendChild(opt);
+    }
+    if (userPick && list.indexOf(userPick) >= 0) {
+        sel.value = userPick;
+    } else if (chosen && list.indexOf(chosen) >= 0) {
+        sel.value = chosen;
+    } else {
+        sel.value = list[0];
+    }
+}
+
+// ---- Iron Condor preset ------------------------------------------------
+
+let ironCondorPreset = null;
+
+// Visual layout for the four legs — strike-ordered so the table reads
+// like the actual iron-condor structure (PE hedge < PE short < CE short
+// < CE hedge). Each row's css class drives the role-column tint.
+const _IC_ROW_DEFS = [
+    { key: "long_pe",  label: "Buy PE (hedge)",  side: "long"  },
+    { key: "short_pe", label: "Sell PE",         side: "short" },
+    { key: "short_ce", label: "Sell CE",         side: "short" },
+    { key: "long_ce",  label: "Buy CE (hedge)",  side: "long"  },
+];
+
+function _renderIronCondorRows(preset) {
+    const tbody = document.getElementById("ic-rows");
+    tbody.innerHTML = "";
+    for (const def of _IC_ROW_DEFS) {
+        const leg = preset ? preset[def.key] : null;
+        const symbol = (leg && leg.symbol) || "—";
+        const strike = (leg && leg.strike != null) ? leg.strike : "—";
+        const ltp = (leg && leg.ltp != null) ? fmtNum(leg.ltp) : "—";
+        const delta = (leg && leg.delta != null)
+            ? (Math.abs(leg.delta) * 100).toFixed(1)
+            : "—";
+        const tr = document.createElement("tr");
+        tr.className = def.side === "long" ? "long-row" : "short-row";
+        tr.innerHTML =
+            "<td>" + def.label + "</td>" +
+            "<td>" + symbol + "</td>" +
+            "<td>" + strike + "</td>" +
+            "<td>" + ltp + "</td>" +
+            "<td>" + delta + "</td>";
+        tbody.appendChild(tr);
+    }
+}
+
+function loadIronCondor() {
+    const sel = document.getElementById("ic-expiry-select");
+    const pickedExpiry = sel && sel.value ? sel.value : "";
+    let url = "http://" + ipaddress + ":" + port + "/api/iron_condor_preset";
+    if (pickedExpiry) url += "?expiry=" + encodeURIComponent(pickedExpiry);
+    fetch(url)
+    .then(r => r.json())
+    .then(data => {
+        if (!Array.isArray(data) || !data[0]) {
+            document.getElementById("ic-meta").textContent =
+                "Preset unavailable: " + (data && data[1] ? data[1] : "error");
+            return;
+        }
+        ironCondorPreset = data[1];
+        if (!ironCondorPreset) {
+            document.getElementById("ic-meta").textContent =
+                "No data — recorder may not have populated this expiry yet";
+            _renderIronCondorRows(null);
+            return;
+        }
+        _syncExpirySelect("ic-expiry-select",
+                          ironCondorPreset.available_expiries,
+                          ironCondorPreset.expiry);
+        document.getElementById("ic-meta").textContent =
+            `Expiry ${ironCondorPreset.expiry} · target |δ| ${ironCondorPreset.delta_target_pct}% · ` +
+            `hedge ${ironCondorPreset.hedge_points}pts · snap ${ironCondorPreset.snapshot_time}`;
+        _renderIronCondorRows(ironCondorPreset);
     })
-    .catch(error => {
-        document.getElementById("responseBox").value = "Error: " + error;
+    .catch(err => {
+        document.getElementById("ic-meta").textContent = "Preset error: " + err;
+    })
+    .finally(() => {
+        const l = document.getElementById("ic-loading");
+        if (l) l.style.display = "none";
     });
 }
 
-function place(transaction_type) {
-    Symbol = document.getElementById("Symbol").value
-    Quantity = document.getElementById("Quantity").value
-    user = username.toLowerCase()
-    document.getElementById("responseBox").value = "Placing " + transaction_type + "orders. Please wait ..."
-    fetch("http://" + ipaddress + ":" + port + "/place_order?user=" + user + "&symbol=" + Symbol + "&quantity=" + Quantity + "&transaction_type=" + transaction_type + "&exchange=NFO")
-    .then(response => response.json())
-    .then(data => {
-        // Show response
-        document.getElementById("responseBox").value = JSON.stringify(data, null, 2);
-    })
-    .catch(error => {
-        document.getElementById("responseBox").value = "Error: " + error;
-    });
+// User-triggered refresh: shows the "Loading…" spinner beside the
+// expiry dropdown, then calls the plain loader. The 30s auto-refresh
+// stays silent so the UI doesn't flicker on every poll.
+function refreshIronCondor() {
+    const l = document.getElementById("ic-loading");
+    if (l) l.style.display = "inline-flex";
+    loadIronCondor();
+}
 
+function deployIronCondor() {
+    if (!ironCondorPreset) {
+        alert("Preset not loaded — click Refresh first.");
+        return;
+    }
+    const qty = (document.getElementById("ic-quantity").value || "650").trim();
+    const user = usernameLower;
+    const legs = [
+        { transaction_type: "BUY",  leg: ironCondorPreset.long_pe,  label: "Buy PE hedge"  },
+        { transaction_type: "BUY",  leg: ironCondorPreset.long_ce,  label: "Buy CE hedge"  },
+        { transaction_type: "SELL", leg: ironCondorPreset.short_pe, label: "Sell PE short" },
+        { transaction_type: "SELL", leg: ironCondorPreset.short_ce, label: "Sell CE short" },
+    ];
+    if (legs.some(o => !o.leg || !o.leg.symbol)) {
+        alert("One or more legs missing — cannot deploy.");
+        return;
+    }
+    const confirmMsg =
+        "Deploy Iron Condor at MARKET (2% deviation):\n\n" +
+        legs.map(o => `  ${o.transaction_type}  ${o.leg.symbol}`).join("\n") +
+        `\n\nQuantity: ${qty}\nExpiry:   ${ironCondorPreset.expiry}\n\nProceed?`;
+    if (!confirm(confirmMsg)) return;
+
+    document.getElementById("responseBox").value = "Deploying Iron Condor...\n";
+
+    (async () => {
+        const results = [];
+        for (const o of legs) {
+            const url = "http://" + ipaddress + ":" + port +
+                "/place_order?user=" + encodeURIComponent(user) +
+                "&symbol=" + encodeURIComponent(o.leg.symbol) +
+                "&quantity=" + encodeURIComponent(qty) +
+                "&transaction_type=" + o.transaction_type +
+                "&exchange=NFO";
+            try {
+                const r = await fetch(url);
+                const d = await r.json();
+                results.push({ step: o.label, symbol: o.leg.symbol, result: d });
+            } catch (e) {
+                results.push({ step: o.label, symbol: o.leg.symbol, error: String(e) });
+            }
+            // brief pause between legs so the broker isn't slammed
+            await new Promise(res => setTimeout(res, 300));
+        }
+        document.getElementById("responseBox").value = JSON.stringify(results, null, 2);
+    })();
 }
 
 function get_status() {
     fetch("http://" + ipaddress + ":" + port + "/status")
     .then(response => response.json())
     .then(data => {
-        // Show response
-        document.getElementById("Status").textContent = 'Status: ' + JSON.stringify(data[1], null, 2).replace('"', '').replace('"', '');
-        document.getElementById("LastRun").textContent = 'Last Run: ' + JSON.stringify(data[2], null, 2).replace('"', '').replace('"', '');
+        const pill = document.getElementById("StatusPill");
+        const statusEl = document.getElementById("Status");
+        const lastRunEl = document.getElementById("LastRun");
+        const statusText = JSON.stringify(data[1], null, 2).replace(/"/g, "");
+        const lastRunText = JSON.stringify(data[2], null, 2).replace(/"/g, "");
+        statusEl.textContent = 'Status: ' + statusText;
+        lastRunEl.textContent = 'Last Run: ' + lastRunText;
+        pill.classList.remove("ok", "off");
+        pill.classList.add(data[0] ? "ok" : "off");
     })
     .catch(error => {
         document.getElementById("Status").textContent = "Status: " + error;
+        const pill = document.getElementById("StatusPill");
+        pill.classList.remove("ok"); pill.classList.add("off");
     });
 }
 
+// ---- Market overview ---------------------------------------------------
+
+function fmtNum(n, digits = 2) {
+    if (n === null || n === undefined) return "—";
+    return Number(n).toLocaleString(undefined, {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+    });
+}
+
+function fmtPct(p) {
+    if (p === null || p === undefined) return "—";
+    const sign = p > 0 ? "+" : "";
+    return sign + Number(p).toFixed(2) + "%";
+}
+
+function signClass(v) {
+    if (v === null || v === undefined) return "neutral";
+    if (v > 0) return "up";
+    if (v < 0) return "down";
+    return "neutral";
+}
+
+function setCell(id, text, klass) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    if (klass !== undefined) el.className = "val " + klass;
+}
+
+function renderIndexCard(prefix, payload) {
+    if (!payload) return;
+    setCell(prefix + "-last", fmtNum(payload.close));
+    setCell(prefix + "-open", fmtNum(payload.open));
+
+    if (payload.change === null || payload.change === undefined) {
+        setCell(prefix + "-change", "—", "neutral");
+    } else {
+        const sign = payload.change > 0 ? "+" : "";
+        const text = sign + fmtNum(payload.change) + " (" + fmtPct(payload.change_pct) + ")";
+        setCell(prefix + "-change", text, "val " + signClass(payload.change));
+    }
+
+    const horizons = [
+        ["3d", "change_3d_pct"],
+        ["1w", "change_1w_pct"],
+        ["1m", "change_1m_pct"],
+        ["3m", "change_3m_pct"],
+    ];
+    for (const [suffix, key] of horizons) {
+        setCell(prefix + "-" + suffix, fmtPct(payload[key]), "val " + signClass(payload[key]));
+    }
+}
+
+function loadIndexSummary() {
+    fetch("http://" + ipaddress + ":" + port + "/api/index_summary")
+    .then(r => r.json())
+    .then(data => {
+        if (!Array.isArray(data) || !data[0]) return;
+        renderIndexCard("nifty", data[1]["NIFTY 50"]);
+        renderIndexCard("banknifty", data[1]["BANKNIFTY"]);
+        renderIndexCard("vix", data[1]["INDIA VIX"]);
+    })
+    .catch(err => console.error("index_summary failed:", err));
+}
+
+// ---- Open positions ----------------------------------------------------
+
+let openPositions = null;
+
+const _OP_TITLE_BY_STATUS = {
+    "iron_condor":    "Open Iron Condor",
+    "short_strangle": "Open Short Strangle",
+};
+
+function _pnlClass(v) {
+    if (v == null) return "";
+    if (v > 0) return "pnl-up";
+    if (v < 0) return "pnl-down";
+    return "";
+}
+
+function _fmtPnL(v) {
+    if (v == null) return "—";
+    const sign = v > 0 ? "+" : "";
+    return sign + fmtNum(v);
+}
+
+function _renderOpenPositions(payload) {
+    const tbody = document.getElementById("op-rows");
+    const tfoot = document.getElementById("op-foot");
+    const meta = document.getElementById("op-meta");
+    const title = document.getElementById("op-title");
+    tbody.innerHTML = "";
+    tfoot.innerHTML = "";
+    const status = payload && payload.status;
+    const legs = (payload && payload.legs) || [];
+
+    if (!_OP_TITLE_BY_STATUS[status] || legs.length === 0) {
+        title.textContent = "Open Position";
+        meta.textContent = (payload && payload.message) || "No tradable group detected";
+        const tr = document.createElement("tr");
+        tr.innerHTML = '<td class="empty" colspan="6">no iron condor / strangle open</td>';
+        tbody.appendChild(tr);
+        return;
+    }
+
+    title.textContent = _OP_TITLE_BY_STATUS[status];
+    meta.textContent = _OP_TITLE_BY_STATUS[status] + " · expiry " + payload.expiry;
+
+    let totalPnl = 0;
+    let pnlMissing = false;
+    for (const r of legs) {
+        const tr = document.createElement("tr");
+        tr.className = (r.side === "long" ? "long-row" : "short-row");
+        const deltaPct = r.delta != null ? (Math.abs(r.delta) * 100).toFixed(1) : "—";
+        const pnlCell = '<td class="' + _pnlClass(r.pnl) + '">' + _fmtPnL(r.pnl) + '</td>';
+        tr.innerHTML =
+            "<td>" + r.symbol + "</td>" +
+            "<td>" + r.quantity + "</td>" +
+            "<td>" + fmtNum(r.avg_price) + "</td>" +
+            "<td>" + fmtNum(r.last_price) + "</td>" +
+            "<td>" + deltaPct + "</td>" +
+            pnlCell;
+        tbody.appendChild(tr);
+        if (r.pnl == null) pnlMissing = true;
+        else totalPnl += Number(r.pnl);
+    }
+
+    // Footer sum row
+    const sumTr = document.createElement("tr");
+    const sumText = pnlMissing && totalPnl === 0 ? "—" : _fmtPnL(totalPnl);
+    sumTr.innerHTML =
+        '<td colspan="5" class="sum-label">Total P&amp;L' +
+        (pnlMissing ? ' <span style="color:var(--text-muted);font-weight:500;">(partial)</span>' : '') +
+        '</td>' +
+        '<td class="' + _pnlClass(totalPnl) + '">' + sumText + '</td>';
+    tfoot.appendChild(sumTr);
+}
+
+function loadOpenPositions() {
+    const user = usernameLower;
+    const sel = document.getElementById("op-expiry-select");
+    const pickedExpiry = sel && sel.value ? sel.value : "";
+    let url = "http://" + ipaddress + ":" + port +
+              "/api/open_positions?user=" + encodeURIComponent(user);
+    if (pickedExpiry) url += "&expiry=" + encodeURIComponent(pickedExpiry);
+    fetch(url)
+    .then(r => r.json())
+    .then(data => {
+        if (!Array.isArray(data) || !data[0]) {
+            document.getElementById("op-meta").textContent =
+                "Positions unavailable: " + (data && data[1] ? data[1] : "error");
+            openPositions = null;
+            return;
+        }
+        openPositions = data[1] || null;
+        if (openPositions) {
+            _syncExpirySelect("op-expiry-select",
+                              openPositions.available_expiries,
+                              openPositions.expiry);
+        }
+        _renderOpenPositions(openPositions);
+    })
+    .catch(err => {
+        document.getElementById("op-meta").textContent = "Positions error: " + err;
+        openPositions = null;
+    })
+    .finally(() => {
+        const l = document.getElementById("op-loading");
+        if (l) l.style.display = "none";
+    });
+}
+
+// User-triggered refresh — see refreshIronCondor for the rationale.
+function refreshOpenPositions() {
+    const l = document.getElementById("op-loading");
+    if (l) l.style.display = "inline-flex";
+    loadOpenPositions();
+}
+
+function closeOpenPositions() {
+    const status = openPositions && openPositions.status;
+    const legs = (openPositions && openPositions.legs) || [];
+    const okStatus = status === "iron_condor" || status === "short_strangle";
+    if (!okStatus || legs.length === 0) {
+        alert("No iron condor / strangle open — nothing to close.");
+        return;
+    }
+    const user = usernameLower;
+    // Close each leg in the opposite direction:
+    //   long  -> SELL to close
+    //   short -> BUY to close
+    // Close the shorts first to eliminate assignment risk before
+    // unwinding the long hedges.
+    const orders = legs
+        .map(p => ({
+            symbol: p.symbol,
+            quantity: Math.abs(p.quantity),
+            transaction_type: p.quantity > 0 ? "SELL" : "BUY",
+            side: p.side,
+            strike: p.strike,
+        }))
+        .sort((a, b) => {
+            const aIsClose = a.transaction_type === "BUY" ? 0 : 1;  // BUY (close short) first
+            const bIsClose = b.transaction_type === "BUY" ? 0 : 1;
+            if (aIsClose !== bIsClose) return aIsClose - bIsClose;
+            return a.strike - b.strike;
+        });
+
+    const confirmMsg =
+        "Close ALL open positions at MARKET (2% deviation):\n\n" +
+        orders.map(o => "  " + o.transaction_type + "  " + o.symbol +
+                        "  qty " + o.quantity).join("\n") +
+        "\n\nProceed?";
+    if (!confirm(confirmMsg)) return;
+
+    document.getElementById("responseBox").value = "Closing positions...\n";
+
+    (async () => {
+        const results = [];
+        for (const o of orders) {
+            const url = "http://" + ipaddress + ":" + port +
+                "/place_order?user=" + encodeURIComponent(user) +
+                "&symbol=" + encodeURIComponent(o.symbol) +
+                "&quantity=" + encodeURIComponent(o.quantity) +
+                "&transaction_type=" + o.transaction_type +
+                "&exchange=NFO";
+            try {
+                const r = await fetch(url);
+                const d = await r.json();
+                results.push({ step: o.transaction_type + " " + o.symbol, result: d });
+            } catch (e) {
+                results.push({ step: o.transaction_type + " " + o.symbol, error: String(e) });
+            }
+            await new Promise(res => setTimeout(res, 300));
+        }
+        document.getElementById("responseBox").value = JSON.stringify(results, null, 2);
+        // Refresh positions after a short delay so the broker updates land.
+        setTimeout(loadOpenPositions, 1500);
+    })();
+}
+
 get_status();
-setInterval(get_status, 30000); // 30000 ms = 1 minute
+loadIndexSummary();
+loadIronCondor();
+loadOpenPositions();
+setInterval(get_status, 30000);
+setInterval(loadIndexSummary, 30000);
+setInterval(loadIronCondor, 30000);
+setInterval(loadOpenPositions, 30000);
 </script>
 
 </body>
