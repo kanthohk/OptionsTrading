@@ -145,11 +145,11 @@ def select_prob_strangle(
     return pe_strike_row, ce_strike_row
 
 # ------------------------- Example Usage -------------------------
-nifty_spot = 25050
-option_chain = get_ltp(symbol='NIFTY', request_type='option')
+nifty_spot = 24000
+required_expiry = "30-Jun-2026"
+option_chain = get_ltp(symbol='NIFTY', expiry=required_expiry, request_type='option')
 
-required_expiry = "30-Sep-2025"
-iv_min = 12  # minimum IV threshold
+iv_min = 10  # minimum IV threshold
 probability_of_success = 0.75
 distance_perc_from_index = 2
 
@@ -166,7 +166,7 @@ if option_chain:
         print(f"PE Strike: {pe_strike_row['strikePrice']}")
         print(f"  Last Price: {pe_strike_row['lastPrice']}")
         print(f"  IV: {pe_strike_row['impliedVolatility']}")
-        print(f"  Probability OTM: {pe_strike_row['prob_otm']:.2f}")
+        print(f"  Probability OTM: {pe_strike_row['prob_otm']}")
         print(f"  Expiry: {pe_strike_row['expiryDate']}\n")
     else:
         print("No PE strike available for the given filters")
@@ -175,7 +175,7 @@ if option_chain:
         print(f"CE Strike: {ce_strike_row['strikePrice']}")
         print(f"  Last Price: {ce_strike_row['lastPrice']}")
         print(f"  IV: {ce_strike_row['impliedVolatility']}")
-        print(f"  Probability OTM: {ce_strike_row['prob_otm']:.2f}")
+        print(f"  Probability OTM: {ce_strike_row['prob_otm']}")
         print(f"  Expiry: {ce_strike_row['expiryDate']}")
     else:
         print("No CE strike available for the given filters")
