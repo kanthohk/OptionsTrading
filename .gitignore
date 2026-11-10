@@ -5,3 +5,4 @@
 **/__pycache__/
 *.pyc
 /trading.db
+/git_token.txt
