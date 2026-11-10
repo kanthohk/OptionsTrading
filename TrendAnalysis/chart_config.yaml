@@ -1,0 +1,12 @@
+market_speed:
+  user: sashi
+  interval: 60
+  symbol: [NIFTY, BANKNIFTY, SENSEX, INDIAVIX]
+  csv: "market_speed.csv"
+  plot: "market_speed_chart.png"
+
+plot_market_speed:
+  csv_path: "market_speed.csv"
+  output_path: "market_speed_chart.png"
+  live: true
+  refresh_seconds: 30.0

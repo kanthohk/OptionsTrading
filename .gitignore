@@ -1,0 +1,6 @@
+/TradingBroker/chromedriver.exe
+/.venv/
+/venv/
+/TradingBroker/config.yaml
+**/__pycache__/
+*.pyc

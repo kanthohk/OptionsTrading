@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TrendAnalysis Dashboard</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --card: #101b2d;
+      --card-2: #16263e;
+      --text: #ecf5ff;
+      --muted: #9bb5d7;
+      --accent: #4cc9f0;
+      --accent-2: #80ed99;
+      --warning: #f4d35e;
+      --danger: #f94144;
+      --border: rgba(255,255,255,0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: linear-gradient(180deg, var(--bg), #0c1728 100%);
+      color: var(--text);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 32px auto;
+      padding: 0 20px 40px;
+    }
+    h1 {
+      margin: 0 0 16px;
+      font-size: 2.2rem;
+    }
+    .panel {
+      background: rgba(16, 27, 45, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      font-size: 0.85rem;
+      color: var(--muted);
+      gap: 8px;
+    }
+    input {
+      background: var(--card-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 1rem;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-weight: 700;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), #5ce1e6);
+      color: #07111f;
+    }
+    button.secondary {
+      background: linear-gradient(135deg, var(--warning), #ffd166);
+      color: #1a1a1a;
+    }
+    button.ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin: 18px 0;
+    }
+    .stat {
+      background: rgba(22, 38, 62, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .stat-label {
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-bottom: 8px;
+    }
+    .stat-value {
+      font-size: 1.7rem;
+      font-weight: 700;
+    }
+    .visuals {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 18px;
+      margin-top: 18px;
+    }
+    .chart-box {
+      background: rgba(16, 27, 45, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      min-height: 340px;
+    }
+    .chart-box img {
+      width: 100%;
+      border-radius: 10px;
+      display: block;
+      background: rgba(255,255,255,0.02);
+      min-height: 260px;
+    }
+    .chart-title {
+      margin-bottom: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 0.9rem;
+    }
+    pre {
+      margin: 0;
+      background: rgba(7, 17, 31, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text);
+      min-height: 220px;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .analysis-block {
+      margin-bottom: 18px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .analysis-block h3 {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 0.9rem;
+    }
+    .analysis-block ul {
+      margin: 0;
+      padding-left: 20px;
+      line-height: 1.7;
+      font-size: 0.82rem;
+    }
+    .trend-uptrend {
+      color: var(--accent-2);
+    }
+    .trend-downdtrend {
+      color: var(--danger);
+    }
+    .trend-sideways {
+      color: var(--warning);
+    }
+    .status {
+      margin-top: 14px;
+      color: var(--accent-2);
+      min-height: 24px;
+      font-weight: 600;
+    }
+    @media (max-width: 800px) {
+      .visuals { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>TrendAnalysis Dashboard</h1>
+
+    <div class="panel">
+      <form id="trendForm">
+        <div class="form-grid">
+          <label>
+            Zerodha User
+            <input type="text" name="user" value="sashi" placeholder="sashi">
+          </label>
+          <label>
+            Symbol
+            <input type="text" name="symbol" value="NIFTY" placeholder="NIFTY">
+          </label>
+          <label>
+            CSV Path
+                    <input type="text" name="csv_path" value="market_speed.csv" placeholder="market_speed.csv">
+          </label>
+          <label>
+            Interval (sec)
+            <input type="number" name="interval" value="60" min="1">
+          </label>
+        </div>
+        <div class="actions">
+          <button type="submit">Fetch Market Speed</button>
+          <button type="button" class="ghost" id="analyzeBtn">Analyze Levels</button>
+        </div>
+        <div class="status" id="statusMessage">Ready.</div>
+      </form>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-label">Symbol</div>
+        <div class="stat-value" id="symbolValue">--</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Last Price</div>
+        <div class="stat-value" id="priceValue">--</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Average Speed</div>
+        <div class="stat-value" id="speedValue">--</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">CSV</div>
+        <div class="stat-value" id="csvValue" style="font-size: 1rem; word-break: break-word;">--</div>
+      </div>
+    </div>
+
+    <div class="visuals">
+      <div class="chart-box">
+        <div class="chart-title">Market Speed Chart</div>
+        <img id="chartImage" alt="Market speed chart" src="">
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Multi-Index Comparison</div>
+        <img id="multiChartImage" alt="Multi-index comparison chart" src="">
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Analysis</div>
+        <pre id="analysisOutput">Analysis output will appear here.</pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('trendForm');
+    const statusMessage = document.getElementById('statusMessage');
+    const symbolValue = document.getElementById('symbolValue');
+    const priceValue = document.getElementById('priceValue');
+    const speedValue = document.getElementById('speedValue');
+    const csvValue = document.getElementById('csvValue');
+    const chartImage = document.getElementById('chartImage');
+    const multiChartImage = document.getElementById('multiChartImage');
+    const analysisOutput = document.getElementById('analysisOutput');
+
+    async function fetchMarketSpeed() {
+      const payload = Object.fromEntries(new FormData(form).entries());
+      statusMessage.textContent = 'Fetching current data...';
+
+      try {
+        const response = await fetch('/api/market-speed/fetch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+
+        if (!response.ok || result.status !== 'ok') {
+          throw new Error(result.message || 'Market fetch failed');
+        }
+
+        const data = result.data;
+        symbolValue.textContent = data.symbol || '--';
+        priceValue.textContent = data.price ? `${data.price}` : '--';
+        speedValue.textContent = data.average_speed ? `${data.average_speed}` : '--';
+        csvValue.textContent = data.csv_path || '--';
+        form.csv_path.value = data.csv_path || form.csv_path.value;
+
+        statusMessage.textContent = 'Market data fetched successfully.';
+      } catch (error) {
+        statusMessage.textContent = error.message;
+      }
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await fetchMarketSpeed();
+    });
+
+    function refreshCharts(csvPathOverride = null) {
+      const csvPath = csvPathOverride || form.csv_path.value || 'market_speed.csv';
+      const singleUrl = `/api/market-speed/chart-image?csv_path=${encodeURIComponent(csvPath)}&output_path=${encodeURIComponent('market_speed_chart.png')}&chart_type=single&_=${Date.now()}`;
+      const multiUrl = `/api/market-speed/chart-image?csv_path=${encodeURIComponent('market_indices.csv')}&output_path=${encodeURIComponent('market_indices_chart.png')}&chart_type=multi&_=${Date.now()}`;
+
+      chartImage.src = singleUrl;
+      multiChartImage.src = multiUrl;
+      statusMessage.textContent = 'Refreshing charts...';
+    }
+
+    async function refreshDashboard() {
+      try {
+        await fetchMarketSpeed();
+      } catch (error) {
+        statusMessage.textContent = error.message;
+      }
+      const csvPath = form.csv_path.value || 'market_speed.csv';
+      if (csvPath) {
+        refreshCharts(csvPath);
+      }
+    }
+
+    setInterval(refreshDashboard, 60000);
+    window.addEventListener('load', refreshDashboard);
+
+    function formatAnalysis(data) {
+      const lines = [];
+
+      lines.push('<div class="analysis-block">');
+      lines.push('<h3>Hourly Trend</h3>');
+      if (data.hourly_trends && data.hourly_trends.length) {
+        lines.push('<ul>');
+        data.hourly_trends.forEach((item) => {
+          lines.push(`<li><strong>${item.hour}</strong> — Open ${item.open}, High ${item.high}, Low ${item.low}, Close ${item.close} | <span class="trend-${item.trend.toLowerCase()}">${item.trend}</span> | ${item.strength}</li>`);
+        });
+        lines.push('</ul>');
+      } else {
+        lines.push('<p>No hourly data available.</p>');
+      }
+      lines.push('</div>');
+
+      lines.push('<div class="analysis-block">');
+      lines.push('<h3>Daily Open Prices</h3>');
+      if (data.daily_open_prices && data.daily_open_prices.length) {
+        lines.push('<ul>');
+        data.daily_open_prices.forEach((item) => {
+          lines.push(`<li><strong>${item.date}</strong>: ${item.open}</li>`);
+        });
+        lines.push('</ul>');
+      } else {
+        lines.push('<p>No daily open-price data available.</p>');
+      }
+      lines.push('</div>');
+
+      lines.push('<div class="analysis-block">');
+      lines.push('<h3>Support Levels</h3>');
+      if (data.support_levels && data.support_levels.length) {
+        lines.push('<ul>');
+        data.support_levels.forEach((item) => {
+          lines.push(`<li>${item.level} (Type: ${item.type}, Strength: ${item.strength.toFixed(2)})</li>`);
+        });
+        lines.push('</ul>');
+      } else {
+        lines.push('<p>No support levels identified.</p>');
+      }
+      lines.push('</div>');
+
+      lines.push('<div class="analysis-block">');
+      lines.push('<h3>Resistance Levels</h3>');
+      if (data.resistance_levels && data.resistance_levels.length) {
+        lines.push('<ul>');
+        data.resistance_levels.forEach((item) => {
+          lines.push(`<li>${item.level} (Type: ${item.type}, Strength: ${item.strength.toFixed(2)})</li>`);
+        });
+        lines.push('</ul>');
+      } else {
+        lines.push('<p>No resistance levels identified.</p>');
+      }
+      lines.push('</div>');
+
+      return lines.join('');
+    }
+
+    document.getElementById('analyzeBtn').addEventListener('click', async () => {
+      const payload = { csv_path: form.csv_path.value || 'data/market_speed.csv' };
+      statusMessage.textContent = 'Running analysis...';
+
+      try {
+        const response = await fetch('/api/market-speed/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+
+        if (!response.ok || result.status !== 'ok') {
+          throw new Error(result.message || 'Analysis failed');
+        }
+
+        const analysis = result.analysis || {};
+        analysisOutput.innerHTML = formatAnalysis(analysis);
+        statusMessage.textContent = 'Market levels analyzed successfully.';
+      } catch (error) {
+        analysisOutput.textContent = error.message;
+        statusMessage.textContent = error.message;
+      }
+    });
+  </script>
+</body>
+</html>

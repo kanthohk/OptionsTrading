@@ -1,0 +1,93 @@
+api_info:
+  users: sashi, madhu, sakhi
+  market_data_user: sashi
+  url: http://157.10.99.215:80
+  db_api_host: 157.10.99.205
+  db_api_port: 8080
+  db_api_secret: password
+auth:
+  jwt_secret: secret73894739247
+adjustment_info:
+  partial_close_enabled: true
+  delta_low_close: 5
+  delta_low_open: 12
+  delta_high_close: 100
+  delta_high_open: 12
+  delta_partial_close: 30
+  delta_readd_half: 19
+  delta_readd_full: 20
+  partial_extra_hedge_lots: 2
+  minimum_distance_pct: 1.7
+  min_oi: 1000
+  min_volume: 1000
+  hedge_search_steps: 2
+  rsi_non_directional_low: 30
+  rsi_non_directional_high: 65
+underlyings:
+  record:
+  - NIFTY
+  - BANKNIFTY
+  NIFTY:
+    strike_step: 50
+    lot_size: 65
+    expiry_cadence: weekly
+    ladder_points: 1500
+  BANKNIFTY:
+    strike_step: 100
+    lot_size: 30
+    expiry_cadence: monthly
+    investment: 100000
+    ladder_points: 3500
+    hedge_info:
+      near: 200
+      mid: 400
+      far: 600
+      near_max_dte: 7
+      mid_max_dte: 14
+    first_week:
+      adjust_hedges: true
+      adjustment: true
+    second_week:
+      adjust_hedges: true
+      adjustment: true
+    third_week:
+      adjust_hedges: true
+      adjustment: true
+stoploss_info:
+  quantity_per_lot: 65
+monitor_info:
+  delay: 30
+  last_watched: 2026-08-20 15:30
+  trade_ingest_cycles: 20
+  order_retries: 5
+  order_retry_gap_seconds: 30
+  trading_holidays: []
+  local_services: []
+hedge_info:
+  near: 100
+  mid: 200
+  far: 300
+  near_max_dte: 7
+  mid_max_dte: 14
+first_week:
+  adjust_hedges: true
+  adjustment: true
+second_week:
+  adjust_hedges: true
+  adjustment: true
+third_week:
+  adjust_hedges: true
+  adjustment: true
+fourth_week:
+  adjust_hedges: true
+  adjustment: true
+fifth_week:
+  adjust_hedges: true
+  adjustment: true
+adjust_at: 30
+dry_run: false
+accounts:
+  madhu:
+    dry_run: false
+  sakhi:
+    dry_run: false

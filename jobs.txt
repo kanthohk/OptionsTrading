@@ -1,0 +1,4 @@
+systemctl status flaskapp
+systemctl status db_api
+systemctl status autotrade
+systemctl status fetcth_db_data

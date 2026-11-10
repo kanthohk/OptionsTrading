@@ -1,0 +1,4053 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title id="title"></title>
+    <!-- Same version snapshots.html already pins, so both pages share one
+         cached copy and can't drift to different Chart.js behaviour. -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #5b8def 0%, #6677d8 45%, #8c75c4 100%);
+            --card-bg: #ffffff;
+            --card-border: #e5e7eb;
+            --text-primary: #111827;
+            --text-secondary: #4b5563;
+            --text-muted: #9ca3af;
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --success: #10B981;
+            --success-hover: #059669;
+            --danger: #EF4444;
+            --danger-hover: #DC2626;
+            --info: #3B82F6;
+            --info-hover: #2563EB;
+            --warning: #F59E0B;
+            /* Subtle tinted backgrounds (≈4% saturation) used to color cards
+               without overwhelming the data inside. */
+            --tint-info:    #EFF6FF;
+            --tint-success: #ECFDF5;
+            --tint-danger:  #FEF2F2;
+            --tint-warning: #FFFBEB;
+            --tint-primary: #EEF2FF;
+            /* Strike-ladder zone washes. Deliberately washes of --success /
+               --warning / --danger rather than the hues themselves: the zones
+               are wide areas behind numbers, and the ink on top has to win. */
+            --lad-profit: rgba(16, 185, 129, 0.16);
+            --lad-wing:   rgba(245, 158, 11, 0.18);
+            --lad-loss:   rgba(239, 68, 68, 0.14);
+            --lad-track:  #eef1f5;
+            /* The ladder card's own surface, for the 2px gaps and the ring
+               behind the spot marker. Kept as a token because "the colour of
+               the thing behind the mark" appears in three places. */
+            --lad-surface: #fafbfc;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+            --radius: 10px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background: var(--bg-gradient);
+            padding: 14px;
+            margin: 0;
+            color: var(--text-primary);
+        }
+        .container {
+            background: var(--card-bg);
+            padding: 18px 22px 22px;
+            border-radius: 14px;
+            max-width: 100%;
+            margin: 0;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+        }
+
+        /* ---- Header ---- */
+        .header {
+            display: flex; align-items: center; gap: 14px;
+            padding-bottom: 14px; margin-bottom: 16px;
+            border-bottom: 1px solid var(--card-border);
+            flex-wrap: wrap;
+        }
+        .header h1 {
+            margin: 0; font-size: 24px; color: var(--text-primary);
+            font-weight: 600;
+        }
+        .header .sub {
+            color: var(--text-muted); font-size: 13px; font-weight: 500;
+            padding: 4px 12px; background: #f3f4f6; border-radius: 999px;
+        }
+        .header .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+        .header .pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 12px; border-radius: 999px;
+            font-size: 13px; font-weight: 600;
+            background: #f3f4f6; color: var(--text-secondary);
+        }
+        .header .pill .dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--text-muted);
+        }
+        .header .pill.ok { background: #ECFDF5; color: #065F46; }
+        .header .pill.ok .dot { background: var(--success); }
+        .header .pill.off { background: #FEF2F2; color: #991B1B; }
+        .header .pill.off .dot { background: var(--danger); }
+        .header .link {
+            color: var(--info); text-decoration: none; font-weight: 600;
+            font-size: 14px; padding: 5px 10px; border-radius: 6px;
+        }
+        .header .link:hover { background: #EFF6FF; }
+
+        /* ---- Cards grid ---- */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+        @media (max-width: 1000px) { .grid { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 700px)  { .grid { grid-template-columns: 1fr; } }
+
+        .card {
+            background: #fafbfc;
+            border: 1px solid var(--card-border);
+            border-top: 3px solid var(--primary);
+            border-radius: var(--radius);
+            padding: 14px;
+            display: flex; flex-direction: column; gap: 10px;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+        .card h3 {
+            margin: 0; font-size: 15px; font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        /* Realised P&L card — slate, to read as a ledger/report rather than
+           an action surface like the green order cards. */
+        .card.card-realised {
+            background: linear-gradient(135deg, #f8fafc, #fafbfc);
+            border-top-color: #64748B;
+        }
+        .card.card-realised h3 { color: #475569; }
+        .rp-head { display: flex; align-items: center; gap: 8px; }
+        .rp-head h3 { margin: 0; }
+        .rp-toggle { margin-left: auto; padding: 5px 10px; font-size: 12px; }
+        .rp-meta {
+            font-size: 13px; color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+        /* Fixed height so the canvas can't grow unbounded as expiries
+           accumulate — 20 grouped columns fit comfortably at 300px. */
+        .rp-chart-wrap { position: relative; height: 300px; }
+        /* An expired book with unmatched lots means fills are MISSING (nothing
+           is held to expiry here), so its figure is understated. Dim it and
+           mark it rather than presenting it as fact. */
+        .positions-table tbody tr.rp-incomplete td { color: var(--text-muted); }
+        .rp-flag {
+            font-size: 10px; font-weight: 700;
+            color: var(--danger); letter-spacing: 0.4px;
+            margin-left: 6px;
+        }
+
+        /* Semantic card tints — order entry (green) */
+        .card.card-order {
+            background: linear-gradient(135deg, var(--tint-success), #fafbfc);
+            border-top-color: var(--success);
+        }
+        .card.card-order h3 { color: var(--success-hover); }
+        .card.card-iron {
+            background: linear-gradient(135deg, var(--tint-success), #fafbfc);
+            border-top-color: var(--success);
+        }
+        .card.card-iron h3 { color: var(--success-hover); }
+        .ic-meta {
+            font-size: 13px; color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+        .field { display: flex; flex-direction: column; gap: 4px; }
+        .field label {
+            font-size: 13px; font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.4px;
+        }
+        .field input {
+            padding: 9px 12px; font-size: 15px;
+            border: 1px solid var(--card-border); border-radius: 6px;
+            background: white; color: var(--text-primary);
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .field input:focus {
+            outline: none; border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79,70,229,0.15);
+        }
+        .field input[readonly] { background: #f9fafb; color: var(--text-secondary); }
+
+        .actions { display: flex; gap: 8px; margin-top: auto; flex-wrap: wrap; }
+        .actions.right { justify-content: flex-end; }
+
+        button {
+            border: none; cursor: pointer;
+            padding: 9px 16px;
+            border-radius: 6px;
+            font-size: 14px; font-weight: 600;
+            transition: background 0.15s, transform 0.05s;
+            color: white;
+        }
+        button:active { transform: translateY(1px); }
+        button.primary { background: var(--primary); }
+        button.primary:hover { background: var(--primary-hover); }
+        button.success { background: var(--success); }
+        button.success:hover { background: var(--success-hover); }
+        button.danger { background: var(--danger); }
+        button.danger:hover { background: var(--danger-hover); }
+        button.info { background: var(--info); }
+        button.info:hover { background: var(--info-hover); }
+        button.ghost {
+            background: white; color: var(--text-secondary);
+            border: 1px solid var(--card-border);
+        }
+        button.ghost:hover { background: #f3f4f6; }
+
+        /* ---- Response panel ---- */
+        .response-card {
+            background: #fafbfc;
+            border: 1px solid var(--card-border);
+            border-top: 3px solid #64748B;
+            border-radius: var(--radius);
+            padding: 14px;
+        }
+        .response-card .head h3 { color: #475569; }
+        .response-card .head {
+            display: flex; align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .response-card .head h3 {
+            margin: 0; font-size: 15px; font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .response-card .head .clearbtn {
+            margin-left: auto;
+        }
+        #responseBox {
+            width: 100%; min-height: 320px;
+            background: #0f172a; color: #e2e8f0;
+            font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            font-size: 13px; line-height: 1.5;
+            padding: 12px 14px;
+            border: 1px solid #1e293b; border-radius: 8px;
+            resize: vertical;
+        }
+        #responseBox:focus { outline: none; }
+
+        /* ---- Host-health rows, the Services block at the foot of the index
+           rail. The old full-width .market-overview strip and its .market-card
+           are gone: the rail is now the only home for both the indices and
+           host health, so there is nothing left above the shell. ---- */
+        .svc-list {
+            display: flex; flex-direction: column; gap: 3px;
+        }
+        .svc-row {
+            display: flex; align-items: center; gap: 7px;
+            font-size: 12px;
+        }
+        .svc-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--text-muted);
+            flex: 0 0 auto;
+        }
+        .svc-row.up .svc-dot { background: var(--success); }
+        .svc-row.down .svc-dot { background: var(--danger); }
+        .svc-name {
+            font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            color: var(--text-secondary);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .svc-state {
+            margin-left: auto;
+            font-size: 11px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.4px;
+            color: var(--text-muted);
+        }
+        .svc-row.up .svc-state { color: var(--success); }
+        .svc-row.down .svc-state { color: var(--danger); }
+        .disk-block {
+            border-top: 1px dashed #e5e7eb;
+            padding-top: 6px;
+        }
+        .disk-line {
+            display: flex; align-items: baseline; gap: 6px;
+            font-size: 12px;
+        }
+        .disk-line .lbl {
+            font-size: 11px; font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .disk-line .val {
+            margin-left: auto;
+            font-weight: 600; font-variant-numeric: tabular-nums;
+            color: var(--text-secondary);
+        }
+        .disk-bar {
+            margin-top: 4px;
+            height: 5px; border-radius: 3px;
+            background: #e5e7eb;
+            overflow: hidden;
+        }
+        .disk-bar > span {
+            display: block; height: 100%; width: 0;
+            border-radius: 3px;
+            background: var(--success);
+            transition: width 0.3s;
+        }
+        .disk-bar.warn > span { background: #F59E0B; }
+        .disk-bar.crit > span { background: var(--danger); }
+
+        .up { color: var(--success); }
+        .down { color: var(--danger); }
+        .neutral { color: var(--text-muted); }
+
+        /* ---- Index rail (vertical bar down the right of the shell) ----
+           ONE bordered bar, not a stack of cards: the index blocks sit flush
+           against each other with no rule and no gap between them, so the
+           three read as a single strip of numbers. Each index is told apart
+           by the colour of its name alone — a tinted panel or a per-index
+           accent border would put back exactly the boundary this is meant
+           not to have. Host health is the last block and does keep a
+           divider: it is a different kind of reading, not a fourth index. */
+        .market-rail {
+            background: linear-gradient(180deg, #ffffff, #f8fafc);
+            border: 1px solid var(--card-border);
+            border-top: 3px solid #64748B;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+            display: flex; flex-direction: column;
+            position: sticky; top: 14px;
+            /* Clips the Services block's flat background to the rounded
+               bottom corners. */
+            overflow: hidden;
+        }
+        .rail-block {
+            display: flex; flex-direction: column; gap: 3px;
+            padding: 8px 12px;
+        }
+        .market-rail .top {
+            display: flex; align-items: baseline; gap: 8px;
+        }
+        .market-rail .symbol {
+            font-size: 13px; font-weight: 700; color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.6px;
+        }
+        .market-rail .last {
+            margin-left: auto;
+            font-size: 18px; font-weight: 700; color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+        #rail-nifty .symbol { color: #1D4ED8; }
+        #rail-banknifty .symbol { color: #B45309; }
+        #rail-vix .symbol { color: #B91C1C; }
+        #rail-services {
+            border-top: 1px solid var(--card-border);
+            background: #f8fafc;
+            gap: 6px;
+        }
+        #rail-services .symbol { color: #475569; }
+        #rail-services .last {
+            font-size: 15px; letter-spacing: 0.4px;
+        }
+        .market-rail .rail-row {
+            display: flex; align-items: baseline; gap: 8px;
+            font-size: 13px;
+        }
+        .market-rail .rail-row .lbl {
+            font-size: 11px; font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .market-rail .rail-row .val {
+            margin-left: auto;
+            font-weight: 600; font-variant-numeric: tabular-nums;
+        }
+
+        /* RSI gets its own two classes rather than reusing .up/.down, which
+           on this page mean "price rose / fell" — a high RSI is not a rise.
+           Green is inside the configured non-directional band (the condition
+           this book wants to sell into); red is anything outside it,
+           overbought and oversold alike. A missing reading stays muted via
+           .neutral: no value is not an out-of-band value. The band itself
+           comes from adjustment_info — see RSI_BAND_LOW in the script. */
+        .market-rail .rail-row .val.rsi-in { color: var(--success); }
+        .market-rail .rail-row .val.rsi-out { color: var(--danger); }
+
+        /* Blink while the reading is OUTSIDE the band, i.e. while the market
+           is directional and the engine is standing down on the two actions
+           that need a range. Motion because the rail is peripheral — an
+           operator watching the positions table would not notice a colour
+           change there, and the whole point is that this state changes what
+           the bot will and won't do.
+
+           Opacity, not visibility: the digits never vanish, so the value
+           stays readable throughout and the row cannot appear to lose its
+           number mid-glance. 1.6s is slow enough to read as a pulse rather
+           than a flicker — fast blinking is both harder to read and a
+           seizure risk. Well under the 3/second WCAG threshold either way. */
+        @keyframes rsi-pulse {
+            0%, 100% { opacity: 1; }
+            50%      { opacity: 0.35; }
+        }
+        .market-rail .rail-row .val.rsi-blink {
+            animation: rsi-pulse 1.6s ease-in-out infinite;
+        }
+        /* Respect the OS setting. The colour and the tooltip still carry the
+           state, so nothing is lost by holding it still — the animation was
+           the redundant channel, not the only one. */
+        @media (prefers-reduced-motion: reduce) {
+            .market-rail .rail-row .val.rsi-blink {
+                animation: none;
+                /* Keep a static emphasis in its place so the reduced-motion
+                   view is not simply the old, quieter one. */
+                text-decoration: underline;
+                text-decoration-style: wavy;
+                text-underline-offset: 3px;
+            }
+        }
+
+        /* Inline "Loading…" spinner shown in the Iron Condor and Open
+           Positions cards while a user-triggered fetch is in flight
+           (Refresh click or expiry-dropdown change). The 30s auto-
+           refresh does NOT show this, so the UI doesn't flicker on
+           every silent poll. */
+        .loading-inline {
+            display: inline-flex; align-items: center; gap: 6px;
+            color: var(--text-muted); font-size: 12px; font-weight: 500;
+            margin-left: 6px;
+        }
+        .loading-inline .spinner {
+            width: 12px; height: 12px;
+            border: 2px solid #e5e7eb;
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            display: inline-block;
+            animation: dash-spin 0.7s linear infinite;
+        }
+        @keyframes dash-spin { to { transform: rotate(360deg); } }
+
+        /* Open Positions beside Iron Condor at the top of the Positions view. */
+        .actions-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+        @media (max-width: 1100px) {
+            .actions-row { grid-template-columns: 1fr; }
+        }
+
+        /* Open-positions card */
+        .positions-card {
+            background: linear-gradient(135deg, var(--tint-warning), #fafbfc);
+            border: 1px solid var(--card-border);
+            border-top: 3px solid var(--warning);
+            border-radius: var(--radius);
+            padding: 14px;
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .positions-card h3 {
+            margin: 0; font-size: 15px; font-weight: 700;
+            color: #B45309;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .positions-card .meta {
+            font-size: 13px; color: var(--text-muted);
+        }
+        /* Not scoped to .positions-card — the Admin card uses it too. */
+        .op-hint {
+            font-size: 11px; color: var(--text-muted); line-height: 1.4;
+        }
+        /* Multi-select expiry picker sits taller than a single-line select,
+           so top-align the label against it instead of centering. */
+        .positions-card .expiry-row { align-items: flex-start; }
+        .positions-card .expiry-row label { padding-top: 4px; }
+        #op-expiry-select[multiple] { min-width: 130px; padding: 2px; }
+        /* Disabled Close All (no expiry selected) — dim and not clickable. */
+        #op-close-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .positions-table {
+            width: 100%; border-collapse: collapse; font-size: 14px;
+            font-variant-numeric: tabular-nums;
+        }
+        .positions-table th, .positions-table td {
+            padding: 7px 10px; text-align: right;
+        }
+        .positions-table th:first-child,
+        .positions-table td:first-child { text-align: left; }
+        .positions-table th {
+            font-size: 12px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.4px;
+            border-bottom: 1px solid var(--card-border);
+        }
+        .positions-table tbody tr:hover { background: rgba(0,0,0,0.03); }
+        .positions-table tbody td.empty {
+            color: var(--text-muted); text-align: center; padding: 12px;
+        }
+        .positions-table .long-row td:nth-child(2) { color: var(--success-hover); }
+        .positions-table .short-row td:nth-child(2) { color: var(--danger-hover); }
+        /* In the Iron Condor card the table's column 2 is Symbol (not
+           Quantity), so colour the Role column instead and reset the
+           inherited Symbol tint. */
+        .card-iron .positions-table .long-row td:first-child {
+            color: var(--success-hover); font-weight: 600;
+        }
+        .card-iron .positions-table .short-row td:first-child {
+            color: var(--danger-hover); font-weight: 600;
+        }
+        .card-iron .positions-table .long-row td:nth-child(2),
+        .card-iron .positions-table .short-row td:nth-child(2) {
+            color: var(--text-primary);
+        }
+        .positions-table td.pnl-up   { color: var(--success-hover); font-weight: 600; }
+        .positions-table td.pnl-down { color: var(--danger-hover);  font-weight: 600; }
+        .positions-table tfoot td {
+            font-weight: 700;
+            border-top: 2px solid var(--card-border);
+            padding-top: 8px;
+        }
+        .positions-table tfoot .sum-label { text-align: right; color: var(--text-secondary); }
+        /* ---- Book (index+expiry) summary row: the drill-down handle ----
+           This row IS the per-book subtotal — the old separate .expiry-group
+           header and .expiry-subtotal footer rows collapsed into it, since
+           the legs they bracketed are now hidden until you expand. */
+        .positions-table tbody tr.book-row td {
+            background: rgba(0,0,0,0.04);
+            border-top: 1px solid var(--card-border);
+            padding: 8px 10px;
+        }
+        .positions-table tbody tr.book-row { cursor: pointer; }
+        .positions-table tbody tr.book-row:hover td { background: rgba(0,0,0,0.07); }
+        /* A lone book is rendered permanently open (see _renderOpenPositions),
+           so it must not advertise a click that does nothing. */
+        .positions-table tbody tr.book-row.static { cursor: default; }
+        .positions-table tbody tr.book-row.static:hover td { background: rgba(0,0,0,0.04); }
+        /* nowrap: the label is "INDEX · Expiry YYYY-MM-DD" and wrapping it
+           breaks mid-date ("2026-08-" / "28"), which reads as two values. */
+        .positions-table tbody tr.book-row td:first-child {
+            font-weight: 700; white-space: nowrap;
+        }
+        .positions-table tbody tr.book-row:focus-visible {
+            outline: 2px solid var(--primary); outline-offset: -2px;
+        }
+        .book-row .caret {
+            display: inline-block; width: 14px;
+            color: var(--text-muted);
+            transition: transform 0.15s;
+        }
+        .book-row.expanded .caret { transform: rotate(90deg); }
+        /* Counts and roll-ups live in one wide cell — they don't line up with
+           the leg columns (a book has no single symbol or strike), so they read
+           as a caption rather than pretending to be column data. */
+        .positions-table tbody tr.book-row td.book-meta {
+            font-size: 12px; font-weight: 500; color: var(--text-muted);
+        }
+        /* Days-to-expiry chip beside the book's expiry date. Lighter weight
+           than the bold label so it reads as an annotation on the date, not a
+           second value. Amber inside the last two days, red once past. */
+        .positions-table tbody tr.book-row .grp-dte {
+            margin-left: 6px;
+            font-size: 11px; font-weight: 600;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+        .positions-table tbody tr.book-row .grp-dte.dte-near { color: var(--warning); }
+        .positions-table tbody tr.book-row .grp-dte.dte-past { color: var(--danger); }
+        /* Ledger gross for the book. Tabular so the figure reads as a number. */
+        .positions-table tbody tr.book-row .grp-closed {
+            margin-left: 10px;
+            font-variant-numeric: tabular-nums;
+        }
+        .positions-table tbody tr.book-row .grp-closed.pnl-up   { color: var(--success-hover); }
+        .positions-table tbody tr.book-row .grp-closed.pnl-down { color: var(--danger-hover); }
+        /* Whether the engine watches this book. Deliberately quiet — it is
+           steady-state context, not an alert, and it sits on every row. The
+           dot carries the state and the colour reinforces it, so the three
+           cases stay apart without relying on hue alone. */
+        .positions-table tbody tr.book-row .grp-monitor {
+            margin-left: 10px;
+            font-size: 11px; font-weight: 600;
+            white-space: nowrap;
+        }
+        .positions-table tbody tr.book-row .grp-monitor.mon-on {
+            color: var(--success-hover);
+        }
+        .positions-table tbody tr.book-row .grp-monitor.mon-watch {
+            color: var(--text-secondary);
+        }
+        /* Unsupervised is the one an operator should notice. Amber rather
+           than red: a book the engine ignores is not itself an error — it
+           may be deliberate — but it should never be discovered by accident. */
+        .positions-table tbody tr.book-row .grp-monitor.mon-off {
+            color: var(--warning);
+        }
+        /* Wrong-width hedge count on the book row — the collapsed-state
+           signal. Amber-on-red so it outranks the ledger badge beside it. */
+        .positions-table tbody tr.book-row .grp-hedge-bad {
+            margin-left: 10px;
+            color: var(--danger); font-weight: 700;
+        }
+        /* A BUY leg whose distance from its short doesn't match hedge_info.
+           !important because .closed-row also colours td, and the bold red
+           has to win over any inherited row tint. Closed legs aren't checked,
+           so in practice this only competes with the long-row background. */
+        .positions-table tbody tr.leg-row td.hedge-bad {
+            color: var(--danger) !important;
+            font-weight: 700;
+        }
+        .positions-table tbody tr.leg-row td.hedge-bad .hedge-bad-note {
+            font-size: 11px; font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        /* Legs are indented under their book so the hierarchy survives even
+           when several books are expanded at once. */
+        .positions-table tbody tr.leg-row td:first-child { padding-left: 28px; }
+        /* Closed-today legs are dimmed so open positions read first. The
+           nth-child(2) quantity tint (long/short) doesn't apply — closed
+           rows carry the .closed-row class, not long/short. */
+        .positions-table tbody tr.closed-row td { color: var(--text-muted); }
+        .positions-table td.status-open   { color: var(--success-hover); font-weight: 600; }
+        .positions-table td.status-closed { color: var(--text-muted); }
+        /* Inline expiry-picker shown in the Iron Condor and Open Positions cards */
+        .expiry-row {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 13px;
+        }
+        .expiry-row label {
+            font-size: 11px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .expiry-row select {
+            padding: 5px 8px; font-size: 13px;
+            border: 1px solid var(--card-border); border-radius: 6px;
+            background: white; color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+        .expiry-row select:focus {
+            outline: none; border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79,70,229,0.15);
+        }
+        /* Target-delta box in the Iron Condor card — sized to 2-3 digits
+           so it sits beside the expiry dropdown without crowding it. */
+        .expiry-row input.delta-input {
+            width: 58px;
+            padding: 5px 6px; font-size: 13px;
+            border: 1px solid var(--card-border); border-radius: 6px;
+            background: white; color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+        .expiry-row input.delta-input:focus {
+            outline: none; border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79,70,229,0.15);
+        }
+
+        /* ---- App shell: left menu + view panes + index rail ----
+           The four views all stay in the DOM and are toggled with a class
+           rather than being built on demand: the pollers keep every panel
+           warm, and the adjustments overlay writes into the Markets chart
+           from the PNL view, which a lazily-mounted view couldn't do. */
+        .shell {
+            display: grid;
+            grid-template-columns: 178px minmax(0, 1fr) 230px;
+            gap: 16px;
+            align-items: start;
+        }
+        /* Too narrow for a third column: the bar lies down into a strip above
+           the menu and views, same single border, blocks side by side. Rows
+           are placed explicitly because the rail is last in the DOM (so it
+           lands in the right-hand column on wide screens) but has to appear
+           first once it spans the full width. */
+        @media (max-width: 1250px) {
+            .shell { grid-template-columns: 178px minmax(0, 1fr); }
+            .market-rail {
+                grid-row: 1; grid-column: 1 / -1;
+                position: static;
+                flex-direction: row; flex-wrap: wrap;
+            }
+            .rail-block { flex: 1 1 190px; }
+            /* Horizontal now, so the Services divider has to move with it. */
+            #rail-services {
+                border-top: none;
+                border-left: 1px solid var(--card-border);
+            }
+            .sidenav { grid-row: 2; grid-column: 1; }
+            .views { grid-row: 2; grid-column: 2; }
+        }
+        @media (max-width: 850px) {
+            .shell { grid-template-columns: 1fr; }
+            /* Single column: drop the explicit row placement and keep the
+               rail at the top with order, since it is last in the DOM. */
+            .market-rail, .sidenav, .views { grid-row: auto; grid-column: auto; }
+            .market-rail { order: -1; }
+        }
+        .sidenav {
+            display: flex; flex-direction: column; gap: 4px;
+            position: sticky; top: 14px;
+        }
+        /* Below the breakpoint the menu becomes a horizontal strip above the
+           content — a sticky 178px column would eat half a phone's width. */
+        @media (max-width: 850px) {
+            .sidenav {
+                position: static; flex-direction: row;
+                overflow-x: auto; padding-bottom: 4px;
+            }
+        }
+        .nav-item {
+            display: flex; align-items: center; gap: 9px;
+            width: 100%; text-align: left;
+            padding: 10px 12px;
+            /* Overrides the global button colour — these are navigation, not
+               actions, so they wear text tokens rather than a fill. */
+            background: transparent; color: var(--text-secondary);
+            border: 1px solid transparent; border-radius: 8px;
+            font-size: 14px; font-weight: 600;
+            white-space: nowrap;
+        }
+        .nav-item:hover { background: #f3f4f6; }
+        .nav-item.active {
+            background: var(--tint-primary);
+            color: var(--primary-hover);
+            border-color: #ddd9fb;
+            box-shadow: inset 3px 0 0 var(--primary);
+        }
+        @media (max-width: 850px) {
+            .nav-item { width: auto; }
+            /* Sideways inset border reads as an underline in row layout. */
+            .nav-item.active { box-shadow: inset 0 -3px 0 var(--primary); }
+        }
+        .nav-item .nav-ico {
+            font-size: 15px; width: 18px; text-align: center;
+        }
+        .view { display: none; flex-direction: column; gap: 14px; }
+        .view.active { display: flex; }
+
+        /* ---- Snapshot date control in the header ---- */
+        .header .hdr-lbl {
+            font-size: 11px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .header select#dateSelect {
+            padding: 5px 8px; font-size: 13px;
+            border: 1px solid var(--card-border); border-radius: 6px;
+            background: white; color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+        .header select#dateSelect:focus {
+            outline: none; border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79,70,229,0.15);
+        }
+        .header .hdr-btn { padding: 6px 12px; font-size: 13px; }
+        .status { font-size: 12px; color: var(--text-muted); }
+
+        /* ---- Chart cards (ported from snapshots.html) ----
+           Slate top border like the realised-P&L card: these are reports,
+           not action surfaces. */
+        .card.card-chart {
+            background: linear-gradient(135deg, #f8fafc, #fafbfc);
+            border-top-color: #64748B;
+        }
+        .card.card-chart h3 { color: #475569; }
+        .chart-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+        }
+        @media (max-width: 1000px) { .chart-grid { grid-template-columns: 1fr; } }
+        /* Fixed height for the same reason as .rp-chart-wrap — an intraday
+           series at 30s cadence would otherwise grow the canvas unbounded. */
+        .chart-wrap { position: relative; height: 280px; }
+        .chart-wrap.tall { height: 320px; }
+        .chart-legend {
+            margin-top: 8px; font-size: 11px; color: var(--text-secondary);
+            display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+        }
+        .chart-legend .sw { padding: 0 8px; color: white; }
+        .chart-legend .sw-o { padding: 0 8px; }
+
+        /* ---- Strike ladder (one spot-centred bar per open book) ----
+           Zone fills are WASHES of the page's status hues, not the hues
+           themselves: the band is a large area, and a large area at full
+           saturation shouts over the numbers it exists to frame. The hues
+           (#10B981 / #F59E0B / #EF4444) were checked as a set against this
+           card's surface — mutually separable under protan/tritan simulation,
+           but all three sit under 3:1 contrast on it, so the zones are never
+           colour-alone: the legend below names each one, every boundary strike
+           is printed under the bar, and the Open Positions table above lists
+           the same strikes leg by leg. */
+        /* padding: 0 overrides .chart-legend .sw, whose 8px sides are sized
+           for that legend's text-bearing swatches. These carry no text. */
+        .ladder-legend .sw {
+            display: inline-block; width: 12px; height: 12px;
+            padding: 0; border-radius: 2px; margin-right: 5px;
+            vertical-align: -2px;
+        }
+        .ladder-legend .sw-profit {
+            background: var(--lad-profit); box-shadow: inset 0 0 0 1px rgba(16,185,129,0.45);
+        }
+        .ladder-legend .sw-wing {
+            background: var(--lad-wing); box-shadow: inset 0 0 0 1px rgba(245,158,11,0.5);
+        }
+        .ladder-legend .sw-loss {
+            background: var(--lad-loss); box-shadow: inset 0 0 0 1px rgba(239,68,68,0.45);
+        }
+        /* Mirrors the mark: the spot key is a line, because spot is drawn as
+           one. The zones are areas, so theirs are rects. */
+        .ladder-legend .sw-spot {
+            width: 2px; height: 13px; border-radius: 0;
+            background: var(--text-primary); margin-right: 7px; margin-left: 5px;
+        }
+        .ladder-rows {
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        /* Meta column fixed so every bar starts at the same x — the whole
+           point is comparing where spot sits between books, and ragged bar
+           origins would break that comparison. */
+        .ladder-row {
+            display: grid;
+            grid-template-columns: 148px minmax(0, 1fr);
+            gap: 12px; align-items: center;
+            padding: 4px 0;
+            border-top: 1px solid var(--card-border);
+        }
+        .ladder-rows .ladder-row:first-child { border-top: none; }
+        @media (max-width: 700px) {
+            .ladder-row { grid-template-columns: 1fr; gap: 2px; }
+        }
+        .ladder-meta {
+            display: flex; flex-direction: column; gap: 1px;
+            font-size: 11px; color: var(--text-secondary);
+        }
+        .ladder-meta .lad-name {
+            font-size: 12px; font-weight: 700; color: var(--text-primary);
+            letter-spacing: 0.3px;
+        }
+        .ladder-meta .lad-expiry { font-variant-numeric: tabular-nums; }
+        .ladder-meta .lad-room {
+            font-variant-numeric: tabular-nums; color: var(--text-muted);
+        }
+        /* The DTE badge is styled for the book row inside the positions
+           table, so the ladder restates the same three declarations rather
+           than widening that selector to the whole page. */
+        .ladder-meta .grp-dte {
+            margin-left: 6px;
+            font-size: 11px; font-weight: 600;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+        .ladder-meta .grp-dte.dte-near { color: var(--warning); }
+        .ladder-meta .grp-dte.dte-past { color: var(--danger); }
+        .ladder-plot { min-width: 0; }
+        /* The bar is drawn at a measured px width, so between a window
+           resize and the debounced redraw it can be wider than its cell.
+           These two keep that moment a proportional shrink rather than a
+           page-wide horizontal scrollbar. */
+        .ladder-plot svg { display: block; max-width: 100%; height: auto; }
+        /* Axis-tick figures: these sit under strikes that must line up
+           column-wise between one book's bar and the next. */
+        .ladder-plot svg text {
+            font-family: inherit;
+            font-variant-numeric: tabular-nums;
+        }
+        .ladder-note {
+            font-size: 11px; color: var(--text-muted); padding: 6px 0;
+        }
+
+        /* ---- Scrollable tables with a pinned header ----
+           The option chain runs to hundreds of rows and the audit to 200;
+           both need their own scroll box so they can't push the rest of the
+           view off-screen. */
+        .table-wrap {
+            max-height: 420px; overflow: auto;
+            border: 1px solid var(--card-border); border-radius: 8px;
+            background: white;
+        }
+        .table-wrap.short { max-height: 340px; }
+        .table-wrap .positions-table thead th {
+            position: sticky; top: 0; z-index: 1;
+            background: #f3f4f6;
+        }
+        .positions-table th.left, .positions-table td.left { text-align: left; }
+        .positions-table td.opt-CE { color: var(--success-hover); }
+        .positions-table td.opt-PE { color: var(--danger-hover); }
+        /* Expiry metrics packs both legs of a strike into one row, so the
+           only thing telling PE columns from CE columns is position. Tint
+           the two header groups and rule a line at the boundary — otherwise
+           reading "Volume" off the wrong side is a matter of miscounting by
+           one, with nothing on screen to catch it. */
+        .positions-table th.pe-col { color: var(--danger-hover); }
+        .positions-table th.ce-col { color: var(--success-hover); }
+        .positions-table th.sep, .positions-table td.sep {
+            border-left: 2px solid var(--card-border);
+        }
+        .positions-table td.mono {
+            font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            font-size: 11px;
+        }
+        /* Column headers that carry a before→after pair wrap to two lines;
+           keep them from stretching the sticky row taller than needed. */
+        .table-wrap .positions-table thead th { line-height: 1.25; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Header -->
+    <div class="header">
+        <h1 id="heading"></h1>
+        <span class="sub">Rs.800 per lot · 6+6 points</span>
+        <div class="right">
+            <span class="pill" id="StatusPill"><span class="dot"></span><span id="Status">Status: —</span></span>
+            <span class="pill" id="LastRunPill">⏱ <span id="LastRun">Last Run: —</span></span>
+            <!-- One date for every recorded-snapshot panel on the page: the
+                 Expiry metrics chain (Positions), both Markets charts, and the
+                 adjustment markers overlaid on them. Kept in the header rather
+                 than duplicated per view so those panels can never disagree
+                 about which day they're showing. -->
+            <!-- Which account's book this page is showing. One autotrade
+                 process trades each account; this one page watches all of
+                 them, so every account-scoped call below carries ?user=.
+                 Hidden entirely when only one account is configured, so a
+                 single-account deployment looks exactly as it did. -->
+            <label class="hdr-lbl" for="accountSelect" id="accountLabel" hidden>Account</label>
+            <select id="accountSelect" onchange="switchAccount(this.value)" hidden></select>
+            <label class="hdr-lbl" for="dateSelect">Snapshot</label>
+            <select id="dateSelect" onchange="loadAll()"></select>
+            <button class="ghost hdr-btn" id="marketSpeedBtn" onclick="toggleMarketSpeed()">Start Market Speed</button>
+            <span class="pill" id="marketSpeedStatusPill" hidden>
+                <span class="dot"></span>
+                <span id="marketSpeedStatusText">Stopped</span>
+            </span>
+            <button class="ghost hdr-btn" id="reloadBtn" onclick="loadAll()">Reload</button>
+            <span class="status" id="statusMsg"></span>
+            <!-- Who is signed in — not the same thing as the account above,
+                 which is whose book is being shown. -->
+            {% if login_user %}
+            <span class="pill" id="loginUserPill" title="Signed in">👤 {{ login_user }}</span>
+            <button class="ghost hdr-btn" id="logoutBtn" onclick="logout()">Log out</button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Four views behind a left menu. Everything outside them (header, status
+         pills, snapshot date, index rail) is shell chrome and stays visible on
+         all of them. The old /snapshots page's four blocks were folded in
+         here: its two charts into Markets, its option-chain table into
+         Positions as Expiry metrics, and its adjustments audit into PNL. -->
+    <div class="shell">
+        <nav class="sidenav" aria-label="Sections">
+            <button class="nav-item active" id="nav-positions" onclick="showView('positions')"
+                    aria-current="page"><span class="nav-ico">▦</span>Positions</button>
+            <button class="nav-item" id="nav-pnl" onclick="showView('pnl')"
+                    ><span class="nav-ico">₹</span>PNL</button>
+            <button class="nav-item" id="nav-markets" onclick="showView('markets')"
+                    ><span class="nav-ico">◫</span>Markets</button>
+            <button class="nav-item" id="nav-market-speed" onclick="showView('market-speed')"
+                    ><span class="nav-ico">⚡</span>Market Speed</button>
+            <button class="nav-item" id="nav-admin" onclick="showView('admin')"
+                    ><span class="nav-ico">⚙</span>Admin</button>
+        </nav>
+        <main class="views">
+        <section class="view active" id="view-positions">
+            <div class="actions-row">
+                <div class="positions-card">
+                    <h3 id="op-title">Open Position</h3>
+                    <div class="expiry-row">
+                        <label for="op-underlying-select">Index</label>
+                        <select id="op-underlying-select" onchange="changeOpUnderlying()">
+                            <option value="">All</option>
+                        </select>
+                        <label for="op-expiry-select">Expiry</label>
+                        <select id="op-expiry-select" multiple size="4"
+                                onchange="_renderOpenPositions(openPositions)"></select>
+                        <span class="loading-inline" id="op-loading" style="display:none;">
+                            <span class="spinner"></span> Loading…
+                        </span>
+                    </div>
+                    <div class="op-hint">Rows are expiry books — click one to drop down to its legs. Ctrl/Cmd-click the picker to scope to one or more books. None selected shows all; Close acts only on the books you tick — each entry is one (index, expiry) pair, so a date shared by two indices can't be closed together by accident.</div>
+                    <div class="meta" id="op-meta">Loading positions…</div>
+                    <table class="positions-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Quantity</th>
+                                <th>Avg Price</th>
+                                <th>Last Price</th>
+                                <th>δ %</th>
+                                <th>P&amp;L</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="op-rows"></tbody>
+                        <tfoot id="op-foot"></tfoot>
+                    </table>
+                    <div class="actions right">
+                        <button class="ghost" id="op-expand-btn" onclick="toggleAllOpBooks()"
+                                style="display:none;">Expand All</button>
+                        <button class="ghost" onclick="refreshOpenPositions()">Refresh</button>
+                        <button class="danger" id="op-close-btn" onclick="closeOpenPositions()" disabled title="Select one or more expiries to enable">Close All</button>
+                    </div>
+                </div>
+                <div class="card card-iron">
+                    <h3>Iron Condor</h3>
+                    <div class="expiry-row">
+                        <label for="ic-underlying-select">Index</label>
+                        <select id="ic-underlying-select" onchange="changeIcUnderlying()"></select>
+                        <label for="ic-expiry-select">Expiry</label>
+                        <select id="ic-expiry-select" onchange="refreshIronCondor()"></select>
+                        <label for="ic-delta-target">Target δ %</label>
+                        <input type="number" id="ic-delta-target" class="delta-input"
+                               value="10" min="1" max="50" step="0.5"
+                               onchange="commitIcDelta()"
+                               title="Short-leg target |delta| in percent (1-50). The PE/CE strikes closest to this delta are picked; hedges are the nearest strikes at least the DTE-derived point distance further out. Only strikes with LTP > 0 are used.">
+                        <span class="loading-inline" id="ic-loading" style="display:none;">
+                            <span class="spinner"></span> Loading…
+                        </span>
+                    </div>
+                    <div class="ic-meta" id="ic-meta">Loading preset…</div>
+                    <table class="positions-table">
+                        <thead>
+                            <tr>
+                                <th>Role</th>
+                                <th>Symbol</th>
+                                <th>Strike</th>
+                                <th>LTP</th>
+                                <th>δ %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ic-rows"></tbody>
+                    </table>
+                    <div class="field">
+                        <label>Quantity</label>
+                        <input type="text" id="ic-quantity" value="650">
+                    </div>
+                    <div class="actions right">
+                        <button class="ghost" onclick="refreshIronCondor()">Refresh</button>
+                        <button class="success" onclick="deployIronCondor()">Deploy</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Strike ladder — one bar per open book, centred on live spot.
+                 The axis is symmetric around spot BY CONSTRUCTION (half-width
+                 is the furthest strike's distance from it), so the centre line
+                 is always the index and a book that has drifted shows up as a
+                 lopsided bar rather than as four numbers you have to subtract
+                 in your head. Zones come from the open legs only: a closed leg
+                 is no longer risk, so it must not widen the safe band.
+                 Scoped by the same index/book pickers as the table above —
+                 _renderOpenPositions hands this its already-filtered groups,
+                 so the two panels can never disagree about what's shown. -->
+            <div class="card card-chart" id="card-ladder">
+                <h3>Strike ladder</h3>
+                <div class="op-hint">Where spot sits between the strikes of each
+                    open book. Distances are index points from spot to the
+                    nearest short on that side — the move that starts costing
+                    money. Under a sold strike, δ is that leg's |delta| in
+                    percent, from the last recorded option snapshot — so it
+                    holds its 15:30 value after the recorder stops writing,
+                    exactly as the δ % column in the table above does.</div>
+                <div class="chart-legend ladder-legend">
+                    <span><i class="sw sw-profit"></i>Max profit — between the shorts</span>
+                    <span><i class="sw sw-wing"></i>Wing — loss ramps to the hedge</span>
+                    <span><i class="sw sw-loss"></i>Past the hedge — loss capped</span>
+                    <span><i class="sw sw-spot"></i>Spot (centre line)</span>
+                </div>
+                <div class="ladder-rows" id="ladder-rows"></div>
+                <div class="ladder-note" id="ladder-note">Loading positions…</div>
+            </div>
+
+            <!-- Expiry metrics — the recorded option chain for the header's
+                 snapshot date (/api/option_snapshot), per index and expiry.
+                 This is the greeks surface the Iron Condor picker chooses
+                 strikes from, so it belongs beside it: when a preset looks
+                 wrong, this is where you check what the recorder actually saw.
+                 One row per STRIKE with the PE legs left of the CE legs — the
+                 pair at a strike is what you actually compare, and two rows
+                 per strike put that comparison a scroll-line apart. Historical
+                 rows, not live quotes — snapshot time is stated beside the
+                 picker, and the table re-polls on the same 30s cadence as the
+                 live blocks up top. -->
+            <div class="card card-chart">
+                <h3>Expiry metrics</h3>
+                <div class="expiry-row">
+                    <label for="chain-underlying-select">Index</label>
+                    <select id="chain-underlying-select"
+                            onchange="changeChainUnderlying()"></select>
+                    <label for="expirySelect">Expiry</label>
+                    <select id="expirySelect" onchange="renderChainTable()"></select>
+                    <span class="ic-meta" id="snapshotMeta"></span>
+                </div>
+                <div class="table-wrap">
+                    <table class="positions-table" id="chainTable">
+                        <thead>
+                            <tr>
+                                <th>Strike</th>
+                                <th class="pe-col">LTP (PE)</th>
+                                <th class="pe-col">Delta (PE)</th>
+                                <th class="pe-col">OI (PE)</th>
+                                <th class="pe-col">Volume (PE)</th>
+                                <th class="ce-col sep">LTP (CE)</th>
+                                <th class="ce-col">Delta (CE)</th>
+                                <th class="ce-col">OI (CE)</th>
+                                <th class="ce-col">Volume (CE)</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="view" id="view-pnl">
+            <!-- Realised P&L per expiry, from closed fills in the kite_trades
+                 ledger (/api/realised_pnl). Same FIFO computation the risk
+                 engine uses for its realised component, so this table and the
+                 risk engine cannot disagree. Unrealised MTM is NOT here — that
+                 lives in Open Positions, which has live quotes. -->
+            <div class="card card-realised">
+                <div class="rp-head">
+                    <h3>Gross P&amp;L by Expiry</h3>
+                    <!-- The table is kept behind a toggle rather than deleted:
+                         a chart alone leaves the numbers unreadable to a
+                         screen reader, and exact figures are sometimes what
+                         you actually want. Chart is the default view. -->
+                    <button class="ghost rp-toggle" id="rp-toggle"
+                            onclick="toggleRealisedView()">Table</button>
+                </div>
+                <div class="rp-meta" id="rp-meta">Loading…</div>
+                <div class="rp-chart-wrap" id="rp-chart-wrap">
+                    <canvas id="rp-chart"></canvas>
+                </div>
+                <table class="positions-table" id="rp-table" style="display:none;">
+                    <thead>
+                        <tr>
+                            <th>Book</th>
+                            <th>Expiry</th>
+                            <th>Gross</th>
+                            <th>Charges</th>
+                            <th>Fills</th>
+                            <th>Realised</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rp-rows"></tbody>
+                    <tfoot id="rp-foot"></tfoot>
+                </table>
+            </div>
+
+            <!-- Adjustments audit: one row per automated inward / outward /
+                 partial-reduce, from the ``adjustments`` table in trading.db
+                 (written by helpers/risk_management.py after every successful
+                 adjustment). Sits under PNL because the question it answers is
+                 whether the bot's rolls actually earned their cost. -->
+            <div class="card card-chart">
+                <h3>Adjustments audit</h3>
+                <div class="expiry-row">
+                    <label for="adjExpiryFilter">Expiry filter</label>
+                    <select id="adjExpiryFilter" onchange="renderAdjustmentsAll()">
+                        <option value="">All expiries</option>
+                    </select>
+                    <span class="ic-meta" id="adjMeta"></span>
+                </div>
+                <!-- P&L (bars) against the NIFTY 50 and India VIX values at the
+                     moment each adjustment fired — shows whether adjustments
+                     cluster around vol spikes, and whether they made money. -->
+                <div class="chart-wrap tall">
+                    <canvas id="adjChart"></canvas>
+                </div>
+                <!-- Legend for the orthogonal encoding: fill = sign of P&L,
+                     border = which kind of adjustment fired. Three Chart.js
+                     datasets would crowd the built-in legend, so the type key
+                     is static HTML. -->
+                <div class="chart-legend">
+                    <span><b>Bar fill:</b>
+                        <span class="sw" style="background:rgba(31,122,58,0.65);">profit</span>
+                        <span class="sw" style="background:rgba(178,34,34,0.65);">loss</span>
+                    </span>
+                    <span><b>Bar border:</b>
+                        <span class="sw-o" style="border:2px solid #1565C0;">inward</span>
+                        <span class="sw-o" style="border:2px solid #E65100;">outward</span>
+                        <span class="sw-o" style="border:2px solid #00838F;">partial_reduce</span>
+                    </span>
+                </div>
+                <div class="table-wrap short">
+                    <table class="positions-table" id="adjustmentsTable">
+                        <thead>
+                            <tr>
+                                <th class="left">Timestamp</th>
+                                <th class="left">Expiry</th>
+                                <th class="left">Side</th>
+                                <th class="left">Type</th>
+                                <th>Short&nbsp;Δ%<br>before→after</th>
+                                <th>Short&nbsp;strike<br>before→after</th>
+                                <th>Hedge&nbsp;strike<br>before→after</th>
+                                <th>NIFTY</th>
+                                <th>VIX</th>
+                                <th>Realized&nbsp;P&amp;L</th>
+                                <th class="left">Order IDs</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="view" id="view-markets">
+            <!-- Intraday recorded series for the header's snapshot date
+                 (/api/market_snapshots). The adjustments audit overlays its
+                 markers onto the left chart, so both charts stay mounted even
+                 while this view is hidden. -->
+            <div class="chart-grid">
+                <div class="card card-chart">
+                    <h3>Spot / Futures / India VIX</h3>
+                    <div class="chart-wrap"><canvas id="marketChart"></canvas></div>
+                </div>
+                <div class="card card-chart">
+                    <h3>ATM IV — Weekly vs Monthly</h3>
+                    <div class="chart-wrap"><canvas id="ivChart"></canvas></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="view" id="view-market-speed">
+            <div class="card card-chart">
+                <h3>Market Speed</h3>
+                <div class="expiry-row" style="margin-bottom:10px;">
+                    <label for="marketSpeedSymbols">Symbols</label>
+                    <input id="marketSpeedSymbols" type="text" value="NSE:NIFTY 50,NSE:NIFTY BANK,NSE:INDIA VIX" style="flex:1; min-width:260px;">
+                    <label for="marketSpeedInterval">Interval (s)</label>
+                    <input id="marketSpeedInterval" type="number" min="1" max="300" value="60" style="width:110px;">
+                    <button class="ghost" id="marketSpeedTabBtn" onclick="toggleMarketSpeed()">Start</button>
+                </div>
+                <div class="chart-grid" style="margin-top:10px; gap:12px;">
+                    <div class="card" style="grid-column:1 / -1;">
+                        <h3>Status</h3>
+                        <div class="meta" id="marketSpeedSummary">Waiting for first read…</div>
+                    </div>
+                </div>
+                <div class="chart-grid" style="margin-top:12px; gap:12px;">
+                    <div class="card">
+                        <h3>Price vs Speed</h3>
+                        <img id="marketSpeedChartSingle" alt="Price vs speed chart" style="width:100%; height:auto; border-radius:8px; background:#eef2ff;" src="">
+                    </div>
+                    <div class="card">
+                        <h3>Multi-index Comparison</h3>
+                        <img id="marketSpeedChartMulti" alt="Multi-index chart" style="width:100%; height:auto; border-radius:8px; background:#eef2ff;" src="">
+                    </div>
+                </div>
+                <div class="card" style="margin-top:12px;">
+                    <h3>Analysis Output</h3>
+                    <pre id="marketSpeedOutput" style="margin:0; white-space:pre-wrap; word-break:break-word; min-height:180px;">No reading yet.</pre>
+                </div>
+            </div>
+        </section>
+
+        <section class="view" id="view-admin">
+            <!-- The Config card (Key/Value + Load/Update) was removed along
+                 with /get_watch_config and /put_watch_config. Editing the
+                 live trading config over an unauthenticated HTTP endpoint was
+                 the whole attack surface of this page; config edits now go
+                 through the file on the host. Watch Log moved into the
+                 Response head — it only ever filled the response box. -->
+            <div class="response-card">
+                <div class="head">
+                    <h3>Watch Log</h3>
+                    <button class="info clearbtn" onclick="watchLog()">Fetch Log</button>
+                    <button class="ghost" onclick="document.getElementById('responseBox').value='';">Clear</button>
+                </div>
+                <!-- Deploy and Close write their order results into this same
+                     box. They don't switch you here, so after placing an order
+                     from Positions this is where the broker's reply landed. -->
+                <div class="op-hint" style="margin-bottom:8px;">Also receives order
+                    results from Deploy Iron Condor and Close Positions.</div>
+                <textarea id="responseBox" readonly></textarea>
+            </div>
+        </section>
+        </main>
+
+        <!-- Index rail. Last in the DOM so it takes the right-hand column of
+             .shell, and sticky, so spot / change / RSI stay on screen while a
+             view scrolls. Indices come from loadIndexSummary()
+             (/api/index_summary), the Services block from loadSystemStatus()
+             (/api/system_status). -->
+        <aside class="market-rail" aria-label="Index overview and host health">
+            <div class="rail-block" id="rail-nifty">
+                <div class="top">
+                    <span class="symbol">NIFTY 50</span>
+                    <span class="last" id="nifty-last">—</span>
+                </div>
+                <div class="rail-row">
+                    <span class="lbl">Change</span><span class="val" id="nifty-change">—</span>
+                </div>
+                <!-- Wilder RSI(14) of daily closes held in market_snapshot,
+                     computed server-side by db_queries.get_index_summary.
+                     Today's bar is the live spot, so this moves intraday. -->
+                <div class="rail-row">
+                    <span class="lbl">RSI</span><span class="val" id="nifty-rsi">—</span>
+                </div>
+            </div>
+            <div class="rail-block" id="rail-banknifty">
+                <div class="top">
+                    <span class="symbol">BANKNIFTY</span>
+                    <span class="last" id="banknifty-last">—</span>
+                </div>
+                <div class="rail-row">
+                    <span class="lbl">Change</span><span class="val" id="banknifty-change">—</span>
+                </div>
+                <div class="rail-row">
+                    <span class="lbl">RSI</span><span class="val" id="banknifty-rsi">—</span>
+                </div>
+            </div>
+            <!-- No RSI line here on purpose: an RSI of the volatility index
+                 isn't a reading this book acts on. renderRsi() skips the
+                 block when the cell is absent. -->
+            <div class="rail-block" id="rail-vix">
+                <div class="top">
+                    <span class="symbol">INDIA VIX</span>
+                    <span class="last" id="vix-last">—</span>
+                </div>
+                <div class="rail-row">
+                    <span class="lbl">Change</span><span class="val" id="vix-change">—</span>
+                </div>
+            </div>
+            <!-- Host health: systemd state of this host's units + disk usage.
+                 Rows come from /api/system_status, which probes a LOCAL
+                 systemctl — so which units appear is set per server by
+                 monitor_info.local_services in Monitor/config.yaml, not by
+                 this markup. db_api and fetch_db_data run on the DB server
+                 and are therefore not listed here. -->
+            <div class="rail-block" id="rail-services">
+                <div class="top">
+                    <span class="symbol">Services</span>
+                    <span class="last" id="svc-summary">—</span>
+                </div>
+                <div class="svc-list" id="svc-list">
+                    <div class="svc-row"><span class="svc-dot"></span><span class="svc-name">loading…</span></div>
+                </div>
+                <div class="disk-block">
+                    <div class="disk-line">
+                        <span class="lbl">Disk <span id="disk-mount"></span></span>
+                        <span class="val" id="disk-text">—</span>
+                    </div>
+                    <div class="disk-bar" id="disk-bar"><span></span></div>
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<!-- Injected by Flask from Monitor/config.yaml (api_info.users / api_info.url)
+     so the dashboard doesn't carry a hard-coded copy of the deployment's
+     identity. The values live in a JSON script block (not as Jinja
+     expressions inside the JS file) so editor JS parsers don't choke. -->
+<script id="dashboard-config" type="application/json">
+{
+    "username": {{ dashboard_username | tojson }},
+    "account": {{ dashboard_account | tojson }},
+    "accounts": {{ dashboard_accounts | tojson }}
+}
+</script>
+<script>
+const _DASH_CFG = JSON.parse(document.getElementById("dashboard-config").textContent);
+let username = _DASH_CFG.username;
+// The account every user-scoped call is made for. Sent VERBATIM as config
+// spells it — not lowercased, as it used to be. The same string keys the
+// broker credentials and is written into kite_trades / adjustments, so
+// folding case here would silently mismatch one of them.
+let account = _DASH_CFG.account;
+// Every account the deployment serves. Empty or single-entry leaves the
+// switcher hidden.
+const accounts = _DASH_CFG.accounts || [];
+// Every call is relative to the page's own origin, never to a configured
+// host:port. The page is reached both directly (http://<server>) and through
+// an HTTPS tunnel (ngrok); an absolute http:// URL breaks the tunnel twice —
+// the browser blocks it as mixed content, and the login cookie, which belongs
+// to the origin the page came from, would not be sent with it anyway.
+
+// ---- Session ----
+// The login is an HttpOnly cookie the browser sends on every call by itself,
+// so no fetch below carries a token. What they all need is to notice when it
+// has EXPIRED: the server then answers 401 (and only then — no endpoint uses
+// 401 for anything else), and the page should go to the login form rather
+// than fill every panel with "unauthorised". Wrapping fetch once covers every
+// call site, including ones added later.
+let _redirectingToLogin = false;
+const _rawFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+    const resp = await _rawFetch(...args);
+    if (resp.status === 401 && !_redirectingToLogin) {
+        _redirectingToLogin = true;
+        window.location.href = "/login?next="
+            + encodeURIComponent(window.location.pathname + window.location.search);
+    }
+    return resp;
+};
+
+async function logout() {
+    try {
+        await _rawFetch("/api/auth/logout", { method: "POST" });
+    } finally {
+        window.location.href = "/login";
+    }
+}
+
+let marketSpeedTimer = null;
+let marketSpeedActive = false;
+
+function _marketSpeedSymbols() {
+    const selected = [];
+    const values = ["NSE:NIFTY 50", "NSE:NIFTY BANK", "NSE:INDIA VIX"];
+    for (const v of values) {
+        if (v && selected.indexOf(v) === -1) selected.push(v);
+    }
+    return selected.join(",");
+}
+
+async function fetchMarketSpeedOnce() {
+    const user = account || "";
+    const params = new URLSearchParams({
+        symbols: document.getElementById("marketSpeedSymbols")
+            ? document.getElementById("marketSpeedSymbols").value || _marketSpeedSymbols()
+            : _marketSpeedSymbols(),
+        interval: document.getElementById("marketSpeedInterval")
+            ? document.getElementById("marketSpeedInterval").value || "60"
+            : "60",
+    });
+    if (user) params.set("user", user);
+
+    const response = await fetch("/api/market_speed?" + params.toString());
+    const data = await response.json();
+    if (!response.ok || !Array.isArray(data) || !data[0]) {
+        throw new Error((data && data[1]) || "Market speed request failed");
+    }
+    return data[1];
+}
+
+function renderMarketSpeedResult(result) {
+    const summary = document.getElementById("marketSpeedSummary");
+    const output = document.getElementById("marketSpeedOutput");
+    const imgSingle = document.getElementById("marketSpeedChartSingle");
+    const imgMulti = document.getElementById("marketSpeedChartMulti");
+    if (!result) {
+        if (summary) summary.textContent = "Waiting for first read…";
+        if (output) output.textContent = "No reading yet.";
+        return;
+    }
+    const speeds = result.current_average_speed || {};
+    const avgLines = Object.entries(speeds)
+        .map(([symbol, value]) => `${symbol}: ${Number(value || 0).toFixed(4)}`)
+        .join("\n");
+    if (summary) summary.textContent = avgLines || "No speed readings yet.";
+    if (imgSingle && result.single_chart_url) {
+        const singleUrl = new URL(result.single_chart_url, window.location.origin);
+        singleUrl.searchParams.set("t", String(Date.now()));
+        imgSingle.src = singleUrl.toString();
+    }
+    if (imgMulti && result.multi_chart_url) {
+        const multiUrl = new URL(result.multi_chart_url, window.location.origin);
+        multiUrl.searchParams.set("t", String(Date.now()));
+        imgMulti.src = multiUrl.toString();
+    }
+    if (output) output.textContent = result.analysis || JSON.stringify(result, null, 2);
+}
+
+function setMarketSpeedButtonState(active) {
+    const btn = document.getElementById("marketSpeedBtn");
+    const tabBtn = document.getElementById("marketSpeedTabBtn");
+    const pill = document.getElementById("marketSpeedStatusPill");
+    const text = document.getElementById("marketSpeedStatusText");
+    if (btn) {
+        marketSpeedActive = active;
+        btn.textContent = active ? "Stop Market Speed" : "Start Market Speed";
+        btn.classList.toggle("danger", active);
+        btn.classList.toggle("ghost", !active);
+    }
+    if (tabBtn) {
+        tabBtn.textContent = active ? "Stop" : "Start";
+        tabBtn.classList.toggle("danger", active);
+        tabBtn.classList.toggle("ghost", !active);
+    }
+    if (pill) pill.hidden = false;
+    if (text) text.textContent = active ? "Running" : "Stopped";
+    if (pill) {
+        pill.classList.toggle("ok", active);
+        pill.classList.toggle("off", !active);
+    }
+}
+
+function updateMarketSpeedStatusText(text) {
+    const el = document.getElementById("marketSpeedStatusText");
+    if (el) {
+        el.textContent = text;
+    }
+}
+
+async function startMarketSpeed() {
+    if (marketSpeedTimer) return;
+    try {
+        const result = await fetchMarketSpeedOnce();
+        renderMarketSpeedResult(result);
+        const speedText = result && result.current_average_speed
+            ? Object.keys(result.current_average_speed).length + " symbols updated"
+            : "updated";
+        document.getElementById("statusMsg").textContent = "Market speed: " + speedText;
+        updateMarketSpeedStatusText("Running");
+        setMarketSpeedButtonState(true);
+        marketSpeedTimer = setInterval(async () => {
+            try {
+                const result = await fetchMarketSpeedOnce();
+                renderMarketSpeedResult(result);
+                const speedText = result && result.current_average_speed
+                    ? Object.keys(result.current_average_speed).length + " symbols updated"
+                    : "updated";
+                document.getElementById("statusMsg").textContent = "Market speed: " + speedText;
+                updateMarketSpeedStatusText("Running");
+            } catch (error) {
+                updateMarketSpeedStatusText("Error");
+                document.getElementById("statusMsg").textContent = "Market speed error: " + error.message;
+            }
+        }, 60000);
+    } catch (error) {
+        updateMarketSpeedStatusText("Error");
+        document.getElementById("statusMsg").textContent = "Market speed error: " + error.message;
+        setMarketSpeedButtonState(false);
+    }
+}
+
+function stopMarketSpeed() {
+    if (marketSpeedTimer) {
+        clearInterval(marketSpeedTimer);
+        marketSpeedTimer = null;
+    }
+    document.getElementById("statusMsg").textContent = "Market speed stopped";
+    updateMarketSpeedStatusText("Stopped");
+    setMarketSpeedButtonState(false);
+}
+
+function toggleMarketSpeed() {
+    if (marketSpeedActive) {
+        stopMarketSpeed();
+    } else {
+        startMarketSpeed();
+    }
+}
+
+// `account` is deliberately a mutable `let`, and every account-scoped fetch
+// reads it at CALL time (`const user = account`) rather than capturing it.
+// That is what makes switching work without reloading the page.
+function _setHeadings() {
+    const shown = account ? account[0].toUpperCase() + account.slice(1) : "Trader";
+    document.getElementById("heading").innerText = shown + " Trade Monitor";
+    document.getElementById("title").innerText = shown + " Trading bot";
+}
+_setHeadings();
+
+function _initAccountSelect() {
+    const sel = document.getElementById("accountSelect");
+    const lbl = document.getElementById("accountLabel");
+    if (!sel) return;
+    sel.innerHTML = "";
+    for (const a of accounts) {
+        const opt = document.createElement("option");
+        opt.value = a;
+        opt.textContent = a;
+        if (a === account) opt.selected = true;
+        sel.appendChild(opt);
+    }
+    // One account is the historical case and needs no control; showing a
+    // dropdown with a single entry just invites the question of what else
+    // is in it.
+    const show = accounts.length > 1;
+    sel.hidden = !show;
+    if (lbl) lbl.hidden = !show;
+}
+
+// Refresh exactly the panels whose contents belong to one account. The
+// market strip, the recorded-snapshot charts and the option chain are
+// index-wide — re-fetching them on a switch would be wasted calls and a
+// visible flicker for identical data.
+function switchAccount(next) {
+    if (!next || next === account) return;
+    account = next;
+    _setHeadings();
+    // Keep ?user= in step, the same way showView() keeps the #fragment in
+    // step: a reload, a bookmark or a link then lands on the same account
+    // instead of snapping back to the default. replaceState rather than a
+    // navigation so switching doesn't reload the page or pile up history.
+    try {
+        const url = new URL(window.location);
+        url.searchParams.set("user", account);
+        history.replaceState(null, "", url);
+    } catch (e) {
+        // Non-fatal: the switch itself has already happened in memory.
+        console.warn("could not update ?user= in the URL:", e);
+    }
+    document.getElementById("statusMsg").textContent = "Showing " + account;
+    get_status();
+    loadOpenPositions();
+    loadRealisedPnl();
+    // The adjustments audit is account-scoped too, but it lives inside the
+    // recorded-snapshot chain that loadAll() owns.
+    loadAll();
+}
+
+// callAPI() was removed with the Config card — it had no callers left.
+// loadConfig()/putConfig() went with it; the LastRun pill is now fed only
+// by get_status(), so nothing can overwrite it with a stale config value.
+
+function watchLog() {
+    // `const`, not an implicit global: a bare `user = account` leaked a
+    // window-scoped `user` that any other function could read long after the
+    // account had been switched.
+    const user = account;
+    fetch("/get_watch_log?user=" + user)
+    .then(response => response.json())
+    .then(data => {
+        const responseBox = document.getElementById("responseBox");
+        responseBox.value = JSON.stringify(data[1], null, 2).replace(/\\n/g, "\n");
+        responseBox.scrollTop = responseBox.scrollHeight;
+    })
+    .catch(error => {
+        document.getElementById("responseBox").value = "Error: " + error;
+    });
+}
+
+// ---- Expiry selector helper -------------------------------------------
+// Populate <select> with the API-supplied expiry list. Preserve the user's
+// current pick across the 30s auto-refresh; if their pick has aged out
+// (e.g. expired today), fall back to whatever expiry the server chose.
+function _syncExpirySelect(selectId, expiries, chosen) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    const userPick = sel.value;
+    const list = Array.isArray(expiries) ? expiries : [];
+    sel.innerHTML = "";
+    if (list.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = ""; opt.textContent = "—";
+        sel.appendChild(opt);
+        sel.disabled = true;
+        return;
+    }
+    sel.disabled = false;
+    for (const e of list) {
+        const opt = document.createElement("option");
+        opt.value = e; opt.textContent = e;
+        sel.appendChild(opt);
+    }
+    if (userPick && list.indexOf(userPick) >= 0) {
+        sel.value = userPick;
+    } else if (chosen && list.indexOf(chosen) >= 0) {
+        sel.value = chosen;
+    } else {
+        sel.value = list[0];
+    }
+}
+
+// ---- Iron Condor preset ------------------------------------------------
+
+let ironCondorPreset = null;
+
+// Committed short-leg target |delta| in percent. The delta box writes
+// here on change and loadIronCondor reads from here — so the silent 30s
+// auto-refresh polls the last value the user actually committed rather
+// than whatever half-typed digits are sitting in the input.
+let icDeltaTarget = 10;
+
+// Index the Iron Condor card is showing. Every preset fetch is scoped to
+// it, since a 24500 strike means something different on NIFTY than on
+// BANKNIFTY and the two chains live in the same table.
+let icUnderlying = "NIFTY";
+
+// Populate the index dropdowns from what the recorder has actually written
+// rows for, rather than hard-coding a list — an index configured but not
+// yet captured would otherwise render an all-"—" card with no explanation.
+// One fetch feeds both the Iron Condor picker and the Expiry metrics chain;
+// they scope by index for the same reason and can't legitimately disagree
+// about which indices exist.
+function loadIcUnderlyings() {
+    fetch("/api/underlyings")
+    .then(r => r.json())
+    .then(data => {
+        const list = (Array.isArray(data) && data[0] && Array.isArray(data[1]))
+            ? data[1] : [];
+        if (list.length === 0) return;
+        const fill = (id, prior) => {
+            const sel = document.getElementById(id);
+            if (!sel) return null;
+            sel.innerHTML = "";
+            for (const u of list) {
+                const opt = document.createElement("option");
+                opt.value = u; opt.textContent = u;
+                sel.appendChild(opt);
+            }
+            sel.value = list.indexOf(prior) >= 0 ? prior : list[0];
+            return sel.value;
+        };
+        icUnderlying = fill("ic-underlying-select", icUnderlying) || icUnderlying;
+        const chainPick = fill("chain-underlying-select", chainUnderlying);
+        // This list arrives after the boot-time loadChain has already fetched
+        // under the default index. If the default isn't in the list at all
+        // (recorder configured for BANKNIFTY only, say), the table on screen
+        // is for an index no longer offered — refetch rather than leave the
+        // dropdown and the rows describing different things.
+        if (chainPick && chainPick !== chainUnderlying) {
+            chainUnderlying = chainPick;
+            refreshChain();
+        }
+    })
+    .catch(() => { /* selectors stay as-is; the preset call still works */ });
+}
+
+// Switching index invalidates the expiry choice — the two chains are
+// recorded independently and one may be missing an expiry the other has.
+// Clearing the dropdown lets _syncExpirySelect re-seed from the new
+// underlying's own available_expiries instead of carrying over a stale pick.
+function changeIcUnderlying() {
+    const sel = document.getElementById("ic-underlying-select");
+    if (sel) icUnderlying = sel.value;
+    const exp = document.getElementById("ic-expiry-select");
+    if (exp) exp.innerHTML = "";
+    refreshIronCondor();
+}
+
+// Visual layout for the four legs — strike-ordered so the table reads
+// like the actual iron-condor structure (PE hedge < PE short < CE short
+// < CE hedge). Each row's css class drives the role-column tint.
+const _IC_ROW_DEFS = [
+    { key: "long_pe",  label: "Buy PE (hedge)",  side: "long"  },
+    { key: "short_pe", label: "Sell PE",         side: "short" },
+    { key: "short_ce", label: "Sell CE",         side: "short" },
+    { key: "long_ce",  label: "Buy CE (hedge)",  side: "long"  },
+];
+
+function _renderIronCondorRows(preset) {
+    const tbody = document.getElementById("ic-rows");
+    tbody.innerHTML = "";
+    for (const def of _IC_ROW_DEFS) {
+        const leg = preset ? preset[def.key] : null;
+        const symbol = (leg && leg.symbol) || "—";
+        const strike = (leg && leg.strike != null) ? leg.strike : "—";
+        const ltp = (leg && leg.ltp != null) ? fmtNum(leg.ltp) : "—";
+        const delta = (leg && leg.delta != null)
+            ? (Math.abs(leg.delta) * 100).toFixed(1)
+            : "—";
+        // The server reports ltp 0 for a leg that clears neither the OI nor
+        // the volume floor — its printed price is the residue of an old
+        // trade, not a level anyone will fill at. Say so on the cell,
+        // otherwise a 0 reads as a free option rather than a suppressed one.
+        const ltpTitle = (leg && leg.illiquid)
+            ? ' title="LTP suppressed to 0 — open interest ' +
+              (leg.oi != null ? leg.oi : "?") + " and day volume " +
+              (leg.volume != null ? leg.volume : "?") + " are both below the " +
+              ((preset && preset.min_oi) || 1000) + " / " +
+              ((preset && preset.min_volume) || 1000) +
+              ' floors, so nobody is trading this strike."'
+            : "";
+        const tr = document.createElement("tr");
+        tr.className = def.side === "long" ? "long-row" : "short-row";
+        tr.innerHTML =
+            "<td>" + def.label + "</td>" +
+            "<td>" + symbol + "</td>" +
+            "<td>" + strike + "</td>" +
+            "<td" + ltpTitle + ">" + ltp + "</td>" +
+            "<td>" + delta + "</td>";
+        tbody.appendChild(tr);
+    }
+}
+
+// Validate and commit the target-delta box, then refetch. Non-numeric or
+// out-of-range input is rejected and the box snaps back to the value
+// actually in use, so what's displayed is always what's being sent.
+function commitIcDelta() {
+    const el = document.getElementById("ic-delta-target");
+    if (!el) return;
+    const v = parseFloat(el.value);
+    if (isFinite(v) && v >= 1 && v <= 50) {
+        icDeltaTarget = v;
+    }
+    el.value = icDeltaTarget;
+    refreshIronCondor();
+}
+
+function loadIronCondor() {
+    const sel = document.getElementById("ic-expiry-select");
+    const pickedExpiry = sel && sel.value ? sel.value : "";
+    let url = "/api/iron_condor_preset?delta_target_pct=" + icDeltaTarget +
+              "&underlying=" + encodeURIComponent(icUnderlying);
+    if (pickedExpiry) url += "&expiry=" + encodeURIComponent(pickedExpiry);
+    fetch(url)
+    .then(r => r.json())
+    .then(data => {
+        if (!Array.isArray(data) || !data[0]) {
+            document.getElementById("ic-meta").textContent =
+                "Preset unavailable: " + (data && data[1] ? data[1] : "error");
+            return;
+        }
+        ironCondorPreset = data[1];
+        if (!ironCondorPreset) {
+            document.getElementById("ic-meta").textContent =
+                "No data — recorder may not have populated this expiry yet";
+            _renderIronCondorRows(null);
+            return;
+        }
+        _syncExpirySelect("ic-expiry-select",
+                          ironCondorPreset.available_expiries,
+                          ironCondorPreset.expiry);
+        // Name the suppressed legs in the meta line — a hover tooltip is
+        // easy to miss, and a 0 LTP changes what the preset is worth.
+        const thin = _IC_ROW_DEFS
+            .filter(d => ironCondorPreset[d.key] && ironCondorPreset[d.key].illiquid)
+            .map(d => d.key.toUpperCase());
+        document.getElementById("ic-meta").textContent =
+            `${ironCondorPreset.underlying || icUnderlying} · ` +
+            `Expiry ${ironCondorPreset.expiry} · target |δ| ${ironCondorPreset.delta_target_pct}% · ` +
+            `hedge ${ironCondorPreset.hedge_points}pts ` +
+            `(${ironCondorPreset.strike_step}pt grid) · snap ${ironCondorPreset.snapshot_time}` +
+            (thin.length
+                ? ` · LTP zeroed on ${thin.join(", ")} — OI and volume both ` +
+                  `under ${ironCondorPreset.min_oi != null ? ironCondorPreset.min_oi : 1000}` +
+                  ` / ${ironCondorPreset.min_volume != null ? ironCondorPreset.min_volume : 1000}`
+                : "");
+        _renderIronCondorRows(ironCondorPreset);
+    })
+    .catch(err => {
+        document.getElementById("ic-meta").textContent = "Preset error: " + err;
+    })
+    .finally(() => {
+        const l = document.getElementById("ic-loading");
+        if (l) l.style.display = "none";
+    });
+}
+
+// User-triggered refresh: shows the "Loading…" spinner beside the
+// expiry dropdown, then calls the plain loader. The 30s auto-refresh
+// stays silent so the UI doesn't flicker on every poll.
+function refreshIronCondor() {
+    const l = document.getElementById("ic-loading");
+    if (l) l.style.display = "inline-flex";
+    loadIronCondor();
+}
+
+function deployIronCondor() {
+    if (!ironCondorPreset) {
+        alert("Preset not loaded — click Refresh first.");
+        return;
+    }
+    const qty = (document.getElementById("ic-quantity").value || "650").trim();
+    const user = account;
+    const legs = [
+        { transaction_type: "BUY",  leg: ironCondorPreset.long_pe,  label: "Buy PE hedge"  },
+        { transaction_type: "BUY",  leg: ironCondorPreset.long_ce,  label: "Buy CE hedge"  },
+        { transaction_type: "SELL", leg: ironCondorPreset.short_pe, label: "Sell PE short" },
+        { transaction_type: "SELL", leg: ironCondorPreset.short_ce, label: "Sell CE short" },
+    ];
+    if (legs.some(o => !o.leg || !o.leg.symbol)) {
+        alert("One or more legs missing — cannot deploy.");
+        return;
+    }
+    const confirmMsg =
+        "Deploy Iron Condor at MARKET (2% deviation):\n\n" +
+        legs.map(o => `  ${o.transaction_type}  ${o.leg.symbol}`).join("\n") +
+        `\n\nIndex:    ${ironCondorPreset.underlying || icUnderlying}` +
+        `\nQuantity: ${qty}\nExpiry:   ${ironCondorPreset.expiry}` +
+        `\nTarget δ: ${ironCondorPreset.delta_target_pct}%\n\nProceed?`;
+    if (!confirm(confirmMsg)) return;
+
+    document.getElementById("responseBox").value = "Deploying Iron Condor...\n";
+
+    (async () => {
+        const results = [];
+        for (const o of legs) {
+            const url = "/place_order?user=" + encodeURIComponent(user) +
+                "&symbol=" + encodeURIComponent(o.leg.symbol) +
+                "&quantity=" + encodeURIComponent(qty) +
+                "&transaction_type=" + o.transaction_type +
+                "&exchange=NFO";
+            try {
+                const r = await fetch(url);
+                const d = await r.json();
+                results.push({ step: o.label, symbol: o.leg.symbol, result: d });
+            } catch (e) {
+                results.push({ step: o.label, symbol: o.leg.symbol, error: String(e) });
+            }
+            // brief pause between legs so the broker isn't slammed
+            await new Promise(res => setTimeout(res, 300));
+        }
+        document.getElementById("responseBox").value = JSON.stringify(results, null, 2);
+    })();
+}
+
+function get_status() {
+    // ?user= or this reports the DEFAULT account's monitor unit and log
+    // mtime — which, with one monitor process per account, would show the
+    // switched-to account as healthy on another account's heartbeat.
+    fetch("/status?user="
+          + encodeURIComponent(account))
+    .then(response => response.json())
+    .then(data => {
+        const pill = document.getElementById("StatusPill");
+        const statusEl = document.getElementById("Status");
+        const lastRunEl = document.getElementById("LastRun");
+        const statusText = JSON.stringify(data[1], null, 2).replace(/"/g, "");
+        const lastRunText = JSON.stringify(data[2], null, 2).replace(/"/g, "");
+        statusEl.textContent = 'Status: ' + statusText;
+        lastRunEl.textContent = 'Last Run: ' + lastRunText;
+        pill.classList.remove("ok", "off");
+        pill.classList.add(data[0] ? "ok" : "off");
+    })
+    .catch(error => {
+        document.getElementById("Status").textContent = "Status: " + error;
+        const pill = document.getElementById("StatusPill");
+        pill.classList.remove("ok"); pill.classList.add("off");
+    });
+}
+
+// ---- Market overview ---------------------------------------------------
+
+function fmtNum(n, digits = 2) {
+    if (n === null || n === undefined) return "—";
+    return Number(n).toLocaleString(undefined, {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+    });
+}
+
+function fmtPct(p) {
+    if (p === null || p === undefined) return "—";
+    const sign = p > 0 ? "+" : "";
+    return sign + Number(p).toFixed(2) + "%";
+}
+
+function signClass(v) {
+    if (v === null || v === undefined) return "neutral";
+    if (v > 0) return "up";
+    if (v < 0) return "down";
+    return "neutral";
+}
+
+function setCell(id, text, klass) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    if (klass !== undefined) el.className = "val " + klass;
+}
+
+// THE band the risk engine gates on, injected by main.py from
+// adjustment_info.rsi_non_directional_low / _high. Inside it the market is
+// non-directional and reads green; outside it is directional — the engine
+// will refuse the outward roll and will not complete a condor — and reads
+// red AND blinks.
+//
+// These were a hardcoded 40-60 here, which was a DIFFERENT band from the
+// engine's. The rail could show a reading in calm green while the engine was
+// standing down on it, and retuning the config moved one and not the other.
+// Now there is one band, defined in one place.
+const RSI_BAND_LOW = {{ rsi_band_low }};
+const RSI_BAND_HIGH = {{ rsi_band_high }};
+
+function rsiInBand(v) {
+    if (v === null || v === undefined) return null;   // unknown, not out
+    return v >= RSI_BAND_LOW && v <= RSI_BAND_HIGH;
+}
+
+function rsiClass(v) {
+    // A missing reading stays muted rather than red: no value is not an
+    // out-of-band value, it's not enough recorded closes yet. It does NOT
+    // blink either — blinking is reserved for a reading we actually have.
+    const inBand = rsiInBand(v);
+    if (inBand === null) return "neutral";
+    return inBand ? "rsi-in" : "rsi-out";
+}
+
+// The cell is absent on cards that don't show RSI (the VIX card), so bail
+// quietly rather than letting setCell's lookup be the thing that decides.
+function renderRsi(prefix, payload) {
+    const el = document.getElementById(prefix + "-rsi");
+    if (!el) return;
+    const v = payload.rsi;
+    const period = payload.rsi_period || 14;
+    const inBand = rsiInBand(v);
+    setCell(prefix + "-rsi", v === null || v === undefined ? "—" : fmtNum(v, 1),
+            rsiClass(v));
+    // Why a dash is a dash: not enough recorded days yet, not a broken feed.
+    if (inBand === null) {
+        el.title = "RSI(" + period + ") needs " + (period + 1) +
+                   " days of recorded closes";
+    } else if (inBand) {
+        el.title = "Wilder RSI(" + period + ") of daily closes · " +
+                   fmtNum(v, 1) + " is inside " + RSI_BAND_LOW + "-" +
+                   RSI_BAND_HIGH + ": non-directional, so the outward roll " +
+                   "and condor completion may run";
+    } else {
+        el.title = "Wilder RSI(" + period + ") of daily closes · " +
+                   fmtNum(v, 1) + " is OUTSIDE " + RSI_BAND_LOW + "-" +
+                   RSI_BAND_HIGH + " (" + (v > RSI_BAND_HIGH ? "upwards" :
+                   "downwards") + "): the engine is holding the outward " +
+                   "roll and will not complete a condor";
+    }
+    // The blink. Driven by a class rather than the colour class alone so
+    // "out of band" and "animating" stay separable — a future state that is
+    // red without being urgent would not want the motion.
+    el.classList.toggle("rsi-blink", inBand === false);
+}
+
+// The rail shows spot, day change and RSI only. The open and the 3d/1w/1m/3m
+// horizons the wide cards used to carry are still in the payload — add a
+// .rail-row with the matching id to bring one back.
+function renderIndexCard(prefix, payload) {
+    if (!payload) return;
+    setCell(prefix + "-last", fmtNum(payload.close));
+    renderRsi(prefix, payload);
+
+    if (payload.change === null || payload.change === undefined) {
+        setCell(prefix + "-change", "—", "neutral");
+    } else {
+        const sign = payload.change > 0 ? "+" : "";
+        const text = sign + fmtNum(payload.change) + " (" + fmtPct(payload.change_pct) + ")";
+        setCell(prefix + "-change", text, signClass(payload.change));
+    }
+}
+
+function loadIndexSummary() {
+    fetch("/api/index_summary")
+    .then(r => r.json())
+    .then(data => {
+        if (!Array.isArray(data) || !data[0]) return;
+        renderIndexCard("nifty", data[1]["NIFTY 50"]);
+        renderIndexCard("banknifty", data[1]["BANKNIFTY"]);
+        renderIndexCard("vix", data[1]["INDIA VIX"]);
+        // Same numbers feed the strike ladder's centre line. Rebuilt from
+        // scratch each poll so an index that stops reporting drops out
+        // rather than pinning the ladder to a stale spot.
+        indexSpot = {};
+        for (const u of Object.keys(LADDER_SPOT_KEY)) {
+            const row = data[1][LADDER_SPOT_KEY[u]];
+            if (row && row.close != null) indexSpot[u] = Number(row.close);
+        }
+        renderStrikeLadders();
+    })
+    .catch(err => console.error("index_summary failed:", err));
+}
+
+// ---- Services / host health -------------------------------------------
+
+// Trim systemd's "Wed 2026-08-13 09:15:02 IST" down to "2026-08-13 09:15"
+// for the row tooltip. Returns the raw string if it isn't that shape.
+function _fmtSince(since) {
+    if (!since) return "never started";
+    const m = /(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/.exec(since);
+    return m ? m[1] + " " + m[2] : since;
+}
+
+function _svcRow(svc) {
+    const row = document.createElement("div");
+    // Anything that isn't cleanly active is 'down' — including 'unavailable'
+    // (couldn't probe) and 'not-found' (unit name doesn't exist), both of
+    // which are operator-visible problems. 'activating' stays neutral.
+    const transitional = svc.state === "activating" || svc.state === "deactivating";
+    row.className = "svc-row " + (svc.active ? "up" : transitional ? "" : "down");
+
+    const bits = [svc.state];
+    if (svc.sub && svc.sub !== svc.state) bits.push(svc.sub);
+    if (svc.restarts) bits.push(svc.restarts + " restart(s)");
+    bits.push("since " + _fmtSince(svc.since));
+    if (svc.error) bits.push(svc.error);
+    row.title = svc.name + ": " + bits.join(" · ");
+
+    const dot = document.createElement("span");
+    dot.className = "svc-dot";
+    const name = document.createElement("span");
+    name.className = "svc-name";
+    name.textContent = svc.name;
+    const state = document.createElement("span");
+    state.className = "svc-state";
+    state.textContent = svc.active ? (svc.sub || "active") : svc.state;
+
+    row.append(dot, name, state);
+    return row;
+}
+
+function renderSystemStatus(payload) {
+    const list = document.getElementById("svc-list");
+    const services = payload.services || [];
+    list.replaceChildren(...services.map(_svcRow));
+
+    const summary = document.getElementById("svc-summary");
+    summary.textContent = payload.up + "/" + payload.total + " UP";
+    summary.className = "last " + (payload.total && payload.up === payload.total
+        ? "up" : payload.up ? "neutral" : "down");
+
+    const disk = payload.disk;
+    const bar = document.getElementById("disk-bar");
+    const fill = bar.firstElementChild;
+    const mount = document.getElementById("disk-mount");
+    const text = document.getElementById("disk-text");
+    if (!disk) {
+        mount.textContent = "";
+        text.textContent = "unavailable";
+        fill.style.width = "0";
+        bar.className = "disk-bar";
+        return;
+    }
+    mount.textContent = disk.mount || "";
+    const pct = disk.used_pct;
+    text.textContent = fmtNum(disk.used_gb, 1) + " / " + fmtNum(disk.total_gb, 1)
+        + " GB" + (pct === null || pct === undefined ? "" : "  ·  " + pct + "%");
+    fill.style.width = Math.min(100, Math.max(0, pct || 0)) + "%";
+    // Thresholds come from the API so they stay next to the measurement.
+    const warn = disk.warn_pct ?? 80, crit = disk.crit_pct ?? 90;
+    bar.className = "disk-bar" + (pct >= crit ? " crit" : pct >= warn ? " warn" : "");
+}
+
+function loadSystemStatus() {
+    fetch("/api/system_status")
+    .then(r => r.json())
+    .then(data => {
+        if (!Array.isArray(data) || !data[0]) return;
+        renderSystemStatus(data[1]);
+    })
+    .catch(err => console.error("system_status failed:", err));
+}
+
+// ---- Realised P&L by expiry --------------------------------------------
+//
+// Realised only, from closed fills in the kite_trades ledger. This is the
+// same figure the risk engine acts on, so the two cannot drift.
+
+// Colour is bound to the UNDERLYING, not to its position in the current data:
+// filtering to a different set of expiries must never repaint a series. Slots
+// match the index names in the rail, so one index reads as one colour
+// across the whole page. Both pairs were validated for colour-vision
+// separation against this card's surface (protan ΔE 30.0, normal 35.3).
+//
+// Beyond three underlyings this needs small multiples rather than a fourth
+// hue — grouped bars stop being readable and the remaining hues don't hold
+// separation. `record` currently lists two.
+const RP_SERIES_COLOR = {
+    "NIFTY":     "#1D4ED8",
+    "BANKNIFTY": "#B45309",
+    "FINNIFTY":  "#1baf7a",
+};
+const RP_SERIES_FALLBACK = "#64748B";
+const RP_MAX_EXPIRIES = 20;
+
+let rpChart = null;
+let rpShowTable = false;
+// Keyed "UNDERLYING|YYYY-MM-DD" so the Open Positions group headers can show
+// each book's closed gross without refetching.
+let realisedByBook = {};
+
+function _rpColor(underlying) {
+    return RP_SERIES_COLOR[underlying] || RP_SERIES_FALLBACK;
+}
+
+function toggleRealisedView() {
+    rpShowTable = !rpShowTable;
+    document.getElementById("rp-table").style.display = rpShowTable ? "" : "none";
+    document.getElementById("rp-chart-wrap").style.display = rpShowTable ? "none" : "";
+    document.getElementById("rp-toggle").textContent = rpShowTable ? "Chart" : "Table";
+}
+
+function _rpDrawChart(books) {
+    const canvas = document.getElementById("rp-chart");
+    if (!canvas || typeof Chart === "undefined") return;
+
+    // Latest N expiries, oldest-to-newest left-to-right.
+    const expiries = [...new Set(books.map(b => b.expiry))].sort();
+    const shown = expiries.slice(-RP_MAX_EXPIRIES);
+    // Series order follows RP_SERIES_COLOR, not the alphabet, so the legend
+    // reads NIFTY-then-BANKNIFTY like the market cards above. Unknown
+    // underlyings trail alphabetically.
+    const known = Object.keys(RP_SERIES_COLOR);
+    const underlyings = [...new Set(books.map(b => b.underlying))].sort((a, b) => {
+        const ia = known.indexOf(a), ib = known.indexOf(b);
+        if (ia !== ib) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+        return a.localeCompare(b);
+    });
+
+    const byKey = {};
+    for (const b of books) byKey[b.underlying + "|" + b.expiry] = b;
+
+    const datasets = underlyings.map(u => {
+        const rows = shown.map(e => byKey[u + "|" + e] || null);
+        return {
+            label: u,
+            data: rows.map(b => (b ? b.gross : null)),
+            // Incomplete books render translucent: their figure is understated
+            // by an unknown amount, so it must not look as solid as a fact.
+            backgroundColor: rows.map(b =>
+                (b && b.expired && (b.unmatched_symbols || []).length)
+                    ? _rpColor(u) + "55" : _rpColor(u)),
+            borderColor: _rpColor(u),
+            borderWidth: 0,
+            maxBarThickness: 24,        // cap it; leave the band's slack as air
+            borderRadius: 4,            // rounded data-end...
+            borderSkipped: "start",     // ...square at the baseline
+            // Surface gap between adjacent bars in a group.
+            barPercentage: 0.82,
+            categoryPercentage: 0.78,
+            _books: rows,
+        };
+    });
+
+    if (rpChart) rpChart.destroy();
+    rpChart = new Chart(canvas.getContext("2d"), {
+        type: "bar",
+        data: { labels: shown, datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "nearest", intersect: true },
+            plugins: {
+                legend: {
+                    position: "top", align: "end",
+                    labels: {
+                        boxWidth: 10, boxHeight: 10, usePointStyle: true,
+                        pointStyle: "rectRounded",
+                        // Legend text wears the text token, not the series hue —
+                        // the swatch beside it carries identity.
+                        color: "#4b5563",
+                        font: { size: 12 },
+                    },
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const b = ctx.dataset._books[ctx.dataIndex];
+                            if (!b) return ctx.dataset.label + ": no data";
+                            const lines = [
+                                ctx.dataset.label + "  gross " + _fmtPnL(b.gross),
+                                "charges " + fmtNum(-b.charges, 0) +
+                                    " over " + b.fills + " fill(s)",
+                                "realised " + _fmtPnL(b.realised),
+                            ];
+                            if (b.expired && (b.unmatched_symbols || []).length) {
+                                lines.push("INCOMPLETE - fills missing for "
+                                           + b.unmatched_symbols.join(", "));
+                            }
+                            return lines;
+                        },
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { color: "#6b7280", font: { size: 11 },
+                             maxRotation: 60, minRotation: 45 },
+                },
+                y: {
+                    // One axis. Gross P&L is signed, so the zero line is the
+                    // baseline bars grow from in both directions — draw it
+                    // darker than the rest of the grid so polarity reads at a
+                    // glance instead of having to find the 0k tick.
+                    grid: {
+                        drawTicks: false,
+                        color: (ctx) => (ctx.tick && ctx.tick.value === 0)
+                            ? "#cbd5e1" : "#eef1f5",
+                        lineWidth: (ctx) => (ctx.tick && ctx.tick.value === 0) ? 2 : 1,
+                    },
+                    border: { display: false },
+                    ticks: {
+                        color: "#6b7280", font: { size: 11 },
+                        callback: (v) => (v / 1000) + "k",
+                    },
+                },
+            },
+        },
+    });
+}
+
+function renderRealisedPnl(payload) {
+    const tbody = document.getElementById("rp-rows");
+    const tfoot = document.getElementById("rp-foot");
+    const meta = document.getElementById("rp-meta");
+    tbody.innerHTML = "";
+    tfoot.innerHTML = "";
+
+    const books = (payload && payload.books) || [];
+    realisedByBook = {};
+    for (const b of books) realisedByBook[b.underlying + "|" + b.expiry] = b;
+    // Group headers in Open Positions show each book's closed gross, so they
+    // need a repaint once this lands (the two panels poll independently).
+    // Safe to reference directly: this only ever runs from a fetch callback,
+    // by which point the module's top-level `let`s are all initialised.
+    if (openPositions) _renderOpenPositions(openPositions);
+
+    if (books.length === 0) {
+        meta.textContent = "No closed fills in the ledger yet";
+        tbody.innerHTML = '<td class="empty" colspan="6">no realised P&amp;L</td>';
+        if (rpChart) { rpChart.destroy(); rpChart = null; }
+        return;
+    }
+
+    const incomplete = books.filter(b => b.expired && (b.unmatched_symbols || []).length);
+    const shownCount = Math.min(
+        new Set(books.map(b => b.expiry)).size, RP_MAX_EXPIRIES);
+    meta.textContent =
+        "latest " + shownCount + " expiry(s) · gross before charges · " +
+        "charges modelled at " + fmtNum(payload.charge_per_trade, 0) + "/fill" +
+        (incomplete.length
+            ? " · " + incomplete.length + " book(s) INCOMPLETE (translucent) — fills missing, understated"
+            : "");
+
+    _rpDrawChart(books);
+
+    for (const b of books) {
+        // Expired + unmatched lots = missing fills, because nothing is held to
+        // expiry here. Mark it; don't present an understated number as fact.
+        const bad = b.expired && (b.unmatched_symbols || []).length > 0;
+        const tr = document.createElement("tr");
+        if (bad) tr.className = "rp-incomplete";
+        if (bad) {
+            tr.title = "Ledger holds unmatched lots on an expired book: "
+                + b.unmatched_symbols.join(", ")
+                + ". Their opening fills predate the ledger, so this book's "
+                + "realised P&L is understated by an unknown amount.";
+        }
+        tr.innerHTML =
+            "<td>" + b.underlying + (bad ? '<span class="rp-flag">INCOMPLETE</span>' : "") + "</td>" +
+            "<td>" + b.expiry + "</td>" +
+            "<td>" + fmtNum(b.gross, 0) + "</td>" +
+            "<td>" + fmtNum(-b.charges, 0) + "</td>" +
+            "<td>" + b.fills + "</td>" +
+            '<td class="' + _pnlClass(b.realised) + '">' + _fmtPnL(b.realised) + "</td>";
+        tbody.appendChild(tr);
+    }
+
+    const total = payload.total_realised;
+    const sumTr = document.createElement("tr");
+    sumTr.innerHTML =
+        '<td colspan="5" class="sum-label">Total realised' +
+        (incomplete.length
+            ? ' <span style="color:var(--text-muted);font-weight:500;">(partial)</span>'
+            : '') +
+        '</td>' +
+        '<td class="' + _pnlClass(total) + '">' + _fmtPnL(total) + '</td>';
+    tfoot.appendChild(sumTr);
+}
+
+function loadRealisedPnl() {
+    // Defaults to the configured trading account server-side, so without
+    // ?user= this panel showed the first account's ledger whichever account
+    // the page was set to.
+    fetch("/api/realised_pnl?user="
+          + encodeURIComponent(account))
+    .then(r => r.json())
+    .then(data => {
+        if (!Array.isArray(data) || !data[0]) {
+            document.getElementById("rp-meta").textContent =
+                "Realised P&L unavailable: " + (data && data[1] ? data[1] : "error");
+            return;
+        }
+        renderRealisedPnl(data[1]);
+    })
+    .catch(err => {
+        document.getElementById("rp-meta").textContent = "Realised P&L error: " + err;
+    });
+}
+
+// ---- Open positions ----------------------------------------------------
+
+let openPositions = null;
+
+function _pnlClass(v) {
+    if (v == null) return "";
+    if (v > 0) return "pnl-up";
+    if (v < 0) return "pnl-down";
+    return "";
+}
+
+function _fmtPnL(v) {
+    if (v == null) return "—";
+    const sign = v > 0 ? "+" : "";
+    return sign + fmtNum(v);
+}
+
+// Index scoping the Open Positions card. "" means All.
+let opUnderlying = "";
+
+// A "book" is one (underlying, expiry) pair. Expiry alone does NOT identify
+// a book: BANKNIFTY's monthly expiry always falls on the last Tuesday, which
+// is always also a NIFTY weekly, so both indices routinely share a date.
+// The picker binds to these composite keys so Close can never act on a date
+// and catch two indices with it.
+function _bookKey(underlying, expiry) {
+    return underlying + "|" + expiry;
+}
+
+function _legBookKey(leg) {
+    return _bookKey(leg.underlying || "", leg.expiry);
+}
+
+// Books currently highlighted. Empty array means "no filter" — the table
+// shows everything in scope and Close is disabled.
+function _selectedOpenBooks() {
+    const sel = document.getElementById("op-expiry-select");
+    if (!sel) return [];
+    return Array.from(sel.selectedOptions).map(o => o.value);
+}
+
+// Populate the index dropdown from the indices that actually have legs,
+// keeping the current pick when it survives.
+function _syncOpenUnderlyingSelect(underlyings) {
+    const sel = document.getElementById("op-underlying-select");
+    if (!sel) return;
+    const list = Array.isArray(underlyings) ? underlyings : [];
+    const prior = opUnderlying;
+    sel.innerHTML = "";
+    const all = document.createElement("option");
+    all.value = ""; all.textContent = "All";
+    sel.appendChild(all);
+    for (const u of list) {
+        const opt = document.createElement("option");
+        opt.value = u; opt.textContent = u;
+        sel.appendChild(opt);
+    }
+    sel.value = list.indexOf(prior) >= 0 ? prior : "";
+    opUnderlying = sel.value;
+}
+
+// One entry per book in scope, preserving the user's ticks. The index
+// prefix is shown only in All view — once scoped to one index it's noise.
+function _syncOpenExpirySelect(books) {
+    const sel = document.getElementById("op-expiry-select");
+    if (!sel) return;
+    const prevSelected = new Set(_selectedOpenBooks());
+    const list = (Array.isArray(books) ? books : [])
+        .filter(b => !opUnderlying || b.underlying === opUnderlying);
+    sel.innerHTML = "";
+    sel.disabled = list.length === 0;
+    for (const b of list) {
+        const opt = document.createElement("option");
+        opt.value = _bookKey(b.underlying, b.expiry);
+        opt.textContent = opUnderlying ? b.expiry
+                                       : b.underlying + " · " + b.expiry;
+        opt.selected = prevSelected.has(opt.value);
+        sel.appendChild(opt);
+    }
+}
+
+// Changing the index re-scopes the book list. Ticks on the now-hidden
+// index are dropped rather than silently retained — a selection you can't
+// see must not stay live on a button that places orders.
+function changeOpUnderlying() {
+    const sel = document.getElementById("op-underlying-select");
+    if (sel) opUnderlying = sel.value;
+    _syncOpenExpirySelect(
+        (openPositions && openPositions.available_books) || []);
+    _renderOpenPositions(openPositions);
+}
+
+// Enable Close All only when at least one expiry is selected — otherwise
+// the "show everything" state can't trigger a close-all-expiries action.
+function _updateCloseButtonState() {
+    const btn = document.getElementById("op-close-btn");
+    if (!btn) return;
+    const n = _selectedOpenBooks().length;
+    btn.disabled = n === 0;
+    btn.textContent = n > 1 ? "Close Selected" : "Close All";
+}
+
+// ---- Book drill-down ---------------------------------------------------
+//
+// The table lists one summary row per book (index + expiry) and hides its
+// legs until you expand it. Legs are the detail; which books you're carrying
+// and what each is worth is the thing you read at a glance.
+
+// Books the user has drilled into, keyed by _bookKey(). Held in module state
+// rather than in the DOM so the silent 30s poll re-renders with the same books
+// open — a refresh that collapsed the book you were reading would be unusable.
+let opExpandedBooks = new Set();
+
+// Book keys in the table as last rendered — what Expand/Collapse All acts on.
+// Books filtered out of view are deliberately not touched by that button.
+let opRenderedBooks = [];
+
+function toggleOpBook(key) {
+    if (opExpandedBooks.has(key)) opExpandedBooks.delete(key);
+    else opExpandedBooks.add(key);
+    // The tbody is rebuilt wholesale, so the row just activated is replaced by
+    // a fresh element. Without handing focus back, every keyboard toggle would
+    // drop the caret to <body> and the next key press would go nowhere.
+    const active = document.activeElement;
+    const hadFocus = !!(active && active.dataset && active.dataset.book === key);
+    _renderOpenPositions(openPositions);
+    if (hadFocus) {
+        for (const tr of document.querySelectorAll("#op-rows tr.book-row")) {
+            if (tr.dataset.book === key) { tr.focus(); break; }
+        }
+    }
+}
+
+function toggleAllOpBooks() {
+    const allOpen = opRenderedBooks.length > 0 &&
+        opRenderedBooks.every(k => opExpandedBooks.has(k));
+    for (const k of opRenderedBooks) {
+        if (allOpen) opExpandedBooks.delete(k);
+        else opExpandedBooks.add(k);
+    }
+    _renderOpenPositions(openPositions);
+}
+
+function _updateExpandButtonState() {
+    const btn = document.getElementById("op-expand-btn");
+    if (!btn) return;
+    // A lone book renders permanently open, so there is nothing to toggle.
+    const n = opRenderedBooks.length;
+    btn.style.display = n > 1 ? "" : "none";
+    const allOpen = n > 0 && opRenderedBooks.every(k => opExpandedBooks.has(k));
+    btn.textContent = allOpen ? "Collapse All" : "Expand All";
+}
+
+// Bucket legs into books, preserving first-seen order. The API already sorts
+// by (underlying, expiry, strike) so books arrive contiguous; keying through a
+// map keeps the grouping correct even if that sort ever changes.
+function _groupLegsByBook(legs) {
+    const order = [];
+    const byKey = new Map();
+    for (const l of legs) {
+        const key = _legBookKey(l);
+        let g = byKey.get(key);
+        if (!g) {
+            g = { key: key, underlying: l.underlying || "", expiry: l.expiry, legs: [] };
+            byKey.set(key, g);
+            order.push(g);
+        }
+        g.legs.push(l);
+    }
+    return order;
+}
+
+// Roll a book's legs up into the figures its summary row shows. Open and
+// closed legs are summed separately — one is mark-to-market and moves with
+// the next tick, the other is banked — then together for the book total.
+// A leg with pnl == null (no avg or no quote) marks the book partial rather
+// than silently counting as zero.
+//
+// "Realised today" is closed legs' pnl PLUS each open leg's realised_today —
+// what a partial close banked on a leg still held. An open leg's pnl marks
+// only the lots left, so without this a trim's P&L vanished from the book.
+// realised_today == null (ledger couldn't vouch) marks the book partial too;
+// undefined is a server predating the field and is simply skipped.
+//
+// ``day`` is the book's "today": the sum of each leg's day_pnl — today's
+// closing fills FIFO-matched in the ledger server-side, closed legs
+// included. It is null when the server predates the field, and
+// ``dayMissing`` flags a leg the ledger couldn't vouch for.
+function _bookSummary(g) {
+    let openCount = 0, closedCount = 0;
+    let mtm = 0, realised = 0, missing = false;
+    let day = 0, dayMissing = false, dayKnown = false;
+    for (const l of g.legs) {
+        if (l.status === "closed") closedCount++;
+        else openCount++;
+        if (l.day_pnl !== undefined) {
+            dayKnown = true;
+            if (l.day_pnl === null) dayMissing = true;
+            else day += Number(l.day_pnl);
+        }
+        if (l.status !== "closed" && l.realised_today !== undefined) {
+            if (l.realised_today === null) missing = true;
+            else realised += Number(l.realised_today);
+        }
+        if (l.pnl == null) { missing = true; continue; }
+        if (l.status === "closed") realised += Number(l.pnl);
+        else mtm += Number(l.pnl);
+    }
+    return {
+        openCount: openCount, closedCount: closedCount,
+        mtm: mtm, realised: realised, total: mtm + realised,
+        missing: missing,
+        day: dayKnown ? day : null, dayMissing: dayMissing,
+    };
+}
+
+// The ledger's gross for this book, if /api/realised_pnl has landed. Labelled
+// "ledger" rather than "closed" so it can't be read as the closed-today figure
+// beside it: this one spans the book's whole life, that one is today only.
+function _ledgerBadge(g) {
+    const closed = realisedByBook[g.underlying + "|" + g.expiry];
+    if (!closed) return "";
+    const bad = closed.expired && (closed.unmatched_symbols || []).length;
+    return ' <span class="grp-closed ' + _pnlClass(closed.gross) + '"' +
+        ' title="Gross P&amp;L from all closed fills in the ledger' +
+        (bad ? ' — INCOMPLETE, fills missing' : '') + '">' +
+        'ledger ' + _fmtPnL(closed.gross) + (bad ? ' *' : '') + '</span>';
+}
+
+// Per-book figures from /api/open_positions' available_books, keyed
+// "UNDERLYING|YYYY-MM-DD": days_to_expiry and expected_hedge_distance.
+// Both are resolved server-side (IST date, live hedge_info, strike grid).
+let opBookSpecs = {};
+
+// Calendar days from today to the book's expiry. Prefers the server's figure,
+// which is computed in IST off the exchange calendar; the local fallback only
+// covers a payload that predates that field. Both dates are collapsed to
+// midnight before subtracting so the answer is a whole number of days
+// regardless of the time of day — "0" means expiry is today, not "<1 day left".
+// Returns null for anything that isn't a YYYY-MM-DD date.
+function _daysToExpiry(expiry, underlying) {
+    const spec = opBookSpecs[_bookKey(underlying || "", expiry)];
+    if (spec && spec.days_to_expiry != null) return Number(spec.days_to_expiry);
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(expiry || "");
+    if (!m) return null;
+    const exp = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((exp - today) / 86400000);
+}
+
+// The DTE chip for a book row. Empty string when the expiry isn't parseable,
+// so a malformed date degrades to just the date rather than a bogus count.
+function _dteBadge(expiry, underlying) {
+    const d = _daysToExpiry(expiry, underlying);
+    if (d == null) return "";
+    const cls = d < 0 ? " dte-past" : d <= 2 ? " dte-near" : "";
+    const text = d < 0
+        ? "expired " + Math.abs(d) + "d ago"
+        : d === 0 ? "expires today"
+                  : d + (d === 1 ? " day" : " days");
+    return ' <span class="grp-dte' + cls + '"' +
+        ' title="Days to expiry: ' + d + '">' + text + "</span>";
+}
+
+// Whether the per-account monitor walks this book, and what it does with it.
+// Server-classified (main.py reuses the engine's own detect_strategy over the
+// book's OPEN legs), so the badge cannot disagree with what actually runs.
+//
+// Three states, because "monitored" alone would flatten a real distinction:
+//   monitored + adjustable — the delta bands run; rolls and partial-reduce
+//                            can place orders on this book.
+//   monitored, not adjustable — DIRECTIONAL. Watched, and completed into a
+//                            condor when the market is non-directional, but
+//                            no delta adjustments.
+//   not monitored          — the engine skips it entirely. A long strangle,
+//                            a naked short, anything unrecognised. Held
+//                            without supervision, which is the state most
+//                            worth surfacing: today it shows up only as an
+//                            absence in the log.
+function _monitorBadge(g) {
+    const spec = opBookSpecs[_bookKey(g.underlying || "", g.expiry)];
+    // Payload predating these fields: say nothing rather than guess. An
+    // absent badge is honest; a wrong one would be read as fact.
+    if (!spec || spec.monitored === undefined) return "";
+    const strategy = spec.strategy || "unrecognised";
+    if (!spec.monitored) {
+        return ' <span class="grp-monitor mon-off" title="' +
+            'The monitor does not act on this book (' + strategy + '). No ' +
+            'adjustments and no condor completion — it is held as-is.">' +
+            '○ not monitored</span>';
+    }
+    if (!spec.adjustable) {
+        return ' <span class="grp-monitor mon-watch" title="' +
+            strategy + ': monitored. No delta adjustments; the missing wing ' +
+            'is sold to complete an iron condor when the market is ' +
+            'non-directional.">● monitored · ' + strategy.toLowerCase() +
+            '</span>';
+    }
+    return ' <span class="grp-monitor mon-on" title="' + strategy +
+        ': monitored, and the delta adjustments run on it — rolls and ' +
+        'partial-reduce can place orders.">● monitored · ' +
+        strategy.toLowerCase().replace(/_/g, " ") + '</span>';
+}
+
+// Count of wrong-width hedges, shown on the book row. Without this a
+// deviation is invisible until you expand the book, and books default to
+// collapsed — the operator would have to open every one to find it.
+function _hedgeBadge(devs) {
+    const n = Object.keys(devs || {}).length;
+    if (!n) return "";
+    return ' <span class="grp-hedge-bad" title="' + n +
+        ' hedge leg(s) at the wrong distance from their short — expand to see">' +
+        '⚠ ' + n + ' hedge' + (n === 1 ? "" : "s") + "</span>";
+}
+
+function _bookRow(g, s, expanded, single, devs) {
+    const label = (g.underlying ? g.underlying + " · " : "") + "Expiry " + g.expiry;
+    const tr = document.createElement("tr");
+    tr.className = "book-row" + (expanded ? " expanded" : "") + (single ? " static" : "");
+    tr.dataset.book = g.key;
+    if (!single) {
+        tr.tabIndex = 0;
+        tr.setAttribute("role", "button");
+        tr.setAttribute("aria-expanded", expanded ? "true" : "false");
+        tr.title = (expanded ? "Collapse" : "Expand") + " " + label;
+        tr.onclick = () => toggleOpBook(g.key);
+        tr.onkeydown = (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                toggleOpBook(g.key);
+            }
+        };
+    }
+    const bits = [g.legs.length + (g.legs.length === 1 ? " leg" : " legs")];
+    if (s.openCount) bits.push(s.openCount + " open");
+    if (s.closedCount) bits.push(s.closedCount + " closed today");
+    if (s.day !== null) {
+        bits.push('<span class="' + _pnlClass(s.day) + '" title="Realised ' +
+            'today: today\'s closing fills, FIFO-matched against the oldest ' +
+            'open lots at their entry prices' +
+            (s.dayMissing ? ' — the ledger could not vouch for a leg, so ' +
+                'this is incomplete' : '') +
+            '">today ' + _fmtPnL(s.day) + (s.dayMissing ? ' *' : '') + '</span>');
+    }
+    const totalText = s.missing && s.total === 0 ? "—" : _fmtPnL(s.total);
+    tr.innerHTML =
+        "<td>" + (single ? "" : '<span class="caret">▸</span>') + label +
+            _dteBadge(g.expiry, g.underlying) + "</td>" +
+        '<td colspan="4" class="book-meta">' + bits.join(" · ") +
+            (s.missing ? ' <span style="font-weight:600;">(partial)</span>' : "") +
+            _monitorBadge(g) + _ledgerBadge(g) + _hedgeBadge(devs) + "</td>" +
+        '<td class="' + _pnlClass(s.total) + '">' + totalText + "</td>" +
+        '<td class="' + (s.openCount ? "status-open" : "status-closed") + '">' +
+            (s.openCount ? "Open" : "Flat") + "</td>";
+    return tr;
+}
+
+// ---- Hedge-width check ------------------------------------------------
+// Each short leg should be protected by a long leg of the SAME option type,
+// sitting `expected_hedge_distance` points out-of-the-money from it — the
+// figure hedge_info prescribes for the book's DTE (see main.py:
+// _expected_hedge_distance). A wing at the wrong width silently changes max
+// loss, so a mismatched BUY leg is called out in red.
+//
+// Pairing is anchored on the BUY leg because that's what gets flagged, and a
+// buy protects the NEAREST short it covers:
+//   CE — a long call caps losses on short calls BELOW it  -> highest short < strike
+//   PE — a long put caps losses on short puts ABOVE it    -> lowest short > strike
+// Picking the nearest (rather than the first found) keeps the check honest on
+// adjusted books that carry several shorts per side after a roll.
+//
+// Only OPEN legs take part. A closed leg is no longer risk, and pairing
+// against one would measure a wing that isn't there.
+function _hedgeDeviations(g) {
+    const spec = opBookSpecs[_bookKey(g.underlying || "", g.expiry)];
+    const expected = spec && spec.expected_hedge_distance != null
+        ? Number(spec.expected_hedge_distance) : null;
+    // No configured width for this underlying — report nothing rather than
+    // measuring against a guess.
+    if (!expected) return {};
+
+    const open = g.legs.filter(l => l.status === "open" && l.strike != null);
+    const out = {};
+    for (const buy of open) {
+        if (buy.side !== "long") continue;
+        const strike = Number(buy.strike);
+        const shorts = open.filter(l => l.side === "short"
+                                     && l.option_type === buy.option_type
+                                     && l.strike != null);
+        let partner = null;
+        for (const s of shorts) {
+            const k = Number(s.strike);
+            const protects = (buy.option_type === "CE") ? k < strike : k > strike;
+            if (!protects) continue;
+            // Nearest short on the protected side.
+            if (partner === null
+                || Math.abs(k - strike) < Math.abs(Number(partner.strike) - strike)) {
+                partner = s;
+            }
+        }
+        // An unpaired long isn't a wrong-width hedge — it's a naked long or
+        // a leftover. Nothing to compare, so leave it unmarked.
+        if (!partner) continue;
+        const actual = Math.abs(strike - Number(partner.strike));
+        if (actual !== expected) {
+            out[buy.symbol] = {
+                actual: actual, expected: expected,
+                shortSymbol: partner.symbol,
+                dte: _daysToExpiry(g.expiry, g.underlying),
+            };
+        }
+    }
+    return out;
+}
+
+function _legRow(r, dev) {
+    const tr = document.createElement("tr");
+    tr.className = "leg-row " + ((r.status === "closed")
+        ? "closed-row"
+        : (r.side === "long" ? "long-row" : "short-row"));
+    const deltaPct = r.delta != null ? (Math.abs(r.delta) * 100).toFixed(1) : "—";
+    const qtyText = (r.status === "closed") ? r.display_quantity : r.quantity;
+    const avgText = (r.avg_price == null) ? "—" : fmtNum(r.avg_price);
+    const statusCls = (r.status === "closed") ? "status-closed" : "status-open";
+    const statusText = (r.status === "closed") ? "Closed" : "Open";
+    // Wrong-width hedge: red symbol plus the actual-vs-expected gap, so the
+    // row says WHY it's flagged without needing a hover.
+    const symCell = dev
+        ? '<td class="hedge-bad" title="Hedge sits ' + dev.actual +
+            ' points from its short (' + dev.shortSymbol + '); ' +
+            dev.expected + ' expected' +
+            (dev.dte == null ? "" : " at " + dev.dte + " DTE") + '">' + r.symbol +
+            ' <span class="hedge-bad-note">' + dev.actual + '&ne;' +
+            dev.expected + '</span></td>'
+        : "<td>" + r.symbol + "</td>";
+    tr.innerHTML =
+        symCell +
+        "<td>" + qtyText + "</td>" +
+        "<td>" + avgText + "</td>" +
+        "<td>" + fmtNum(r.last_price) + "</td>" +
+        "<td>" + deltaPct + "</td>" +
+        '<td class="' + _pnlClass(r.pnl) + '">' + _fmtPnL(r.pnl) + "</td>" +
+        '<td class="' + statusCls + '">' + statusText + "</td>";
+    return tr;
+}
+
+function _renderOpenPositions(payload) {
+    const tbody = document.getElementById("op-rows");
+    const tfoot = document.getElementById("op-foot");
+    const meta = document.getElementById("op-meta");
+    const title = document.getElementById("op-title");
+    tbody.innerHTML = "";
+    tfoot.innerHTML = "";
+    title.textContent = "Open Positions";
+    _updateCloseButtonState();
+    // Rebuilt here rather than in loadOpenPositions' handler so every
+    // re-render path (index switch, book ticks, expand/collapse) sees the
+    // same figures — those paths re-render from the cached payload without
+    // re-fetching.
+    opBookSpecs = {};
+    for (const b of (payload && payload.available_books) || []) {
+        opBookSpecs[_bookKey(b.underlying || "", b.expiry)] = b;
+    }
+    const allLegs = (payload && payload.legs) || [];
+
+    if (allLegs.length === 0) {
+        opRenderedBooks = [];
+        ladderGroups = [];
+        renderStrikeLadders();
+        _updateExpandButtonState();
+        meta.textContent = (payload && payload.message) || "No positions";
+        const tr = document.createElement("tr");
+        tr.innerHTML = '<td class="empty" colspan="7">no positions today</td>';
+        tbody.appendChild(tr);
+        return;
+    }
+
+    // Two-stage filter: the index dropdown scopes what's visible at all,
+    // then the book ticks narrow further. No ticks = show everything in
+    // scope. Both stages match on (underlying, expiry), never expiry alone.
+    const inScope = opUnderlying
+        ? allLegs.filter(l => (l.underlying || "") === opUnderlying)
+        : allLegs;
+    const selectedBooks = _selectedOpenBooks();
+    const selSet = new Set(selectedBooks);
+    const legs = (selSet.size === 0)
+        ? inScope
+        : inScope.filter(l => selSet.has(_legBookKey(l)));
+
+    const openCount = legs.filter(l => l.status === "open").length;
+    const closedCount = legs.filter(l => l.status === "closed").length;
+
+    // One group per (underlying, expiry) — never per expiry alone. On a date
+    // two indices share, grouping by date would put NIFTY 25000 and BANKNIFTY
+    // 57900 under one heading with their strikes interleaved.
+    const groups = _groupLegsByBook(legs);
+    opRenderedBooks = groups.map(g => g.key);
+    // The ladder plots the same scope as this table, from the same groups —
+    // one filter, two panels, no way for them to disagree about what's shown.
+    ladderGroups = groups;
+    // A lone book has nothing to drill past — its summary row and legs are the
+    // whole table — so it renders open and without a click affordance.
+    const single = groups.length === 1;
+
+    meta.textContent =
+        (opUnderlying ? opUnderlying : "All indices") + " · " +
+        (selSet.size === 0
+            ? "all books"
+            : selectedBooks.length + " book" + (selectedBooks.length === 1 ? "" : "s") + " selected") +
+        " · " + groups.length + " book" + (groups.length === 1 ? "" : "s") +
+        " · " + openCount + " open, " + closedCount + " closed today";
+
+    let totalPnl = 0;
+    let pnlMissing = false;
+    let totalDay = null, dayMissing = false;
+    for (const g of groups) {
+        const s = _bookSummary(g);
+        totalPnl += s.total;
+        if (s.missing) pnlMissing = true;
+        if (s.day !== null) totalDay = (totalDay || 0) + s.day;
+        if (s.dayMissing) dayMissing = true;
+        const expanded = single || opExpandedBooks.has(g.key);
+        const devs = _hedgeDeviations(g);
+        tbody.appendChild(_bookRow(g, s, expanded, single, devs));
+        if (!expanded) continue;
+        for (const r of g.legs) tbody.appendChild(_legRow(r, devs[r.symbol]));
+    }
+    _updateExpandButtonState();
+
+    // Footer sum row (open MTM + closed realised across the shown scope).
+    const sumTr = document.createElement("tr");
+    const sumText = pnlMissing && totalPnl === 0 ? "—" : _fmtPnL(totalPnl);
+    sumTr.innerHTML =
+        '<td colspan="5" class="sum-label">Total P&amp;L' +
+        (pnlMissing ? ' <span style="color:var(--text-muted);font-weight:500;">(partial)</span>' : '') +
+        '</td>' +
+        '<td class="' + _pnlClass(totalPnl) + '">' + sumText + '</td>' +
+        '<td></td>';
+    tfoot.appendChild(sumTr);
+
+    // Sum of every shown book's "today" figure (day_pnl), on its own row
+    // under the total. Omitted for a server that predates day_pnl.
+    if (totalDay !== null) {
+        const dayTr = document.createElement("tr");
+        dayTr.innerHTML =
+            '<td colspan="5" class="sum-label" title="Sum of each book\'s ' +
+            'today figure: today\'s closing fills, FIFO-matched against ' +
+            'the oldest open lots">' +
+            'Today\'s realised P&amp;L' +
+            (dayMissing ? ' <span style="color:var(--text-muted);font-weight:500;">(partial)</span>' : '') +
+            '</td>' +
+            '<td class="' + _pnlClass(totalDay) + '">' + _fmtPnL(totalDay) + '</td>' +
+            '<td></td>';
+        tfoot.appendChild(dayTr);
+    }
+
+    renderStrikeLadders();
+}
+
+// ---- Strike ladder ----------------------------------------------------
+//
+// One horizontal bar per open book with live spot pinned to the CENTRE of
+// the axis. The half-width is whatever the furthest strike needs, so the
+// centre line is the index in every bar and the only asymmetry on screen is
+// the book's own: a condor that has drifted reads as a lopsided bar instead
+// of four numbers you have to subtract in your head.
+//
+// Open legs only. A leg closed earlier today is no longer risk, and letting
+// one widen the safe band would overstate exactly the thing this is for.
+
+// Live spot per underlying, cached from the last /api/index_summary poll.
+// Reused rather than re-fetched so the ladder centres on EXACTLY the number
+// the rail is displaying — two panels disagreeing about spot would be worse
+// than either being one poll stale.
+let indexSpot = {};
+
+// Derivatives prefix (what a leg carries) -> the label get_index_summary
+// returns. NOT helpers.underlyings.nse_symbol: the recorder keeps
+// BANKNIFTY's spot in its own column and the summary labels that
+// 'BANKNIFTY', where the Kite quote symbol is 'NIFTY BANK'. An underlying
+// absent here simply has no spot, which the row states rather than guessing.
+const LADDER_SPOT_KEY = { "NIFTY": "NIFTY 50", "BANKNIFTY": "BANKNIFTY" };
+
+// Books the ladder last drew, in the scope _renderOpenPositions handed it.
+let ladderGroups = [];
+
+// Geometry in CSS px of the rendered bar. The band sits 26px down to leave
+// room for the spot value and its cap above it — at a smaller offset the
+// text's ascender is clipped by the top of the viewBox.
+const LAD_H = 73;          // full svg height, both label lines included
+const LAD_BAND_Y = 26;     // band top edge
+const LAD_BAND_H = 14;     // band thickness — mark spec caps bars at 24px
+const LAD_GAP = 2;         // surface gap between touching zone fills
+const LAD_PAD = 0.14;      // domain slack beyond the outermost strike
+const LAD_CHAR_W = 5.5;    // px per digit at 10px, for label collision tests
+// Delta caption size. Raised from 9px: δ on a sold strike is the number the
+// adjustments engine actually acts on, and at 9px it was the smallest text
+// on the page. It now outsizes the 10px strike above it, which inverts the
+// original hierarchy on purpose — the strike is the label, the delta is the
+// reading.
+//
+// Two knock-on effects, both handled rather than absorbed:
+//   * descenders need more room, hence LAD_H 70 -> 73;
+//   * a wider caption collides sooner, so LAD_SUB_CHAR_W must track the
+//     font size or labels would overlap instead of being dropped. At bold
+//     weight a digit is ~0.6em.
+const LAD_SUB_FONT = 11;
+const LAD_SUB_CHAR_W = LAD_SUB_FONT * 0.6;
+
+function _ladEsc(s) {
+    return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function _ladNum(v) { return Math.round(v * 10) / 10; }
+
+// The four boundaries the zones are built from, plus the open legs that
+// produced them.
+function _ladderZones(g) {
+    const open = (g.legs || []).filter(l => l.status === "open" && l.strike != null);
+    const pick = (side, type) => open
+        .filter(l => l.side === side && l.option_type === type)
+        .map(l => Number(l.strike));
+    const shortPE = pick("short", "PE"), shortCE = pick("short", "CE");
+    const longPE = pick("long", "PE"), longCE = pick("long", "CE");
+    return {
+        // Nearest short each side — the first strike price has to cross for
+        // the book to start losing. A rolled book can hold several shorts on
+        // one side and it is the INNER one that bounds the profit zone, so
+        // max() below and min() above. Not clamped to spot: a short that has
+        // already been breached SHOULD land inside the bar on the wrong side
+        // of the centre line, because that is what has happened.
+        shortLow: shortPE.length ? Math.max(...shortPE) : null,
+        shortHigh: shortCE.length ? Math.min(...shortCE) : null,
+        // Outermost hedge — where the loss stops growing. Null means that
+        // side is naked, which the bar shows by running the loss wash all
+        // the way to the edge instead of stopping it at a wing.
+        hedgeLow: longPE.length ? Math.min(...longPE) : null,
+        hedgeHigh: longCE.length ? Math.max(...longCE) : null,
+        legs: open,
+    };
+}
+
+// Points from spot to the nearest short on each side: the move that starts
+// costing money. Null where the book has no short that side.
+function _ladderRoom(z, spot) {
+    return {
+        down: z.shortLow != null ? spot - z.shortLow : null,
+        up: z.shortHigh != null ? z.shortHigh - spot : null,
+    };
+}
+
+function _ladderRoomText(room) {
+    const one = (v, arrow) => {
+        if (v == null) return arrow + " —";
+        // A crossed short is not "negative room", it's a breach. Saying so
+        // in words keeps it legible without leaning on colour.
+        if (v < 0) return arrow + " breached";
+        return arrow + " " + fmtNum(v, 0);
+    };
+    return one(room.down, "▼") + " · " + one(room.up, "▲") + " pts";
+}
+
+// |delta| in percent per SHORT strike, for the second label line. Same
+// figure and same formatting as the δ % column in the table above — one is
+// the ladder's caption for the other, so they must not disagree. Only shorts
+// carry it: delta on a sold strike is the number the adjustments engine acts
+// on, where a hedge's delta is a consequence of where the short went. A
+// strike holding two shorts (a straddle, or a leftover pair mid-roll) lists
+// both rather than silently picking one.
+function _ladderShortDeltas(z) {
+    const out = {};
+    for (const l of z.legs) {
+        if (l.side !== "short") continue;
+        const k = Number(l.strike);
+        // An explicit dash, not a blank: no recorded snapshot for this
+        // symbol is a different thing from a delta that rounds to zero.
+        const text = l.delta == null
+            ? "—" : (Math.abs(Number(l.delta)) * 100).toFixed(1);
+        out[k] = out[k] ? out[k] + "/" + text : text;
+    }
+    return out;
+}
+
+// Which strike labels to print under a bar, in priority order, dropping any
+// that would collide with one already placed or overflow the plot. A dropped
+// strike is not lost: its tick still carries the tooltip, and the Open
+// Positions table above lists every leg.
+function _ladderLabels(z, x, W, subs) {
+    const wanted = [];
+    if (z.shortLow != null) wanted.push({ v: z.shortLow, pri: 0 });
+    if (z.shortHigh != null) wanted.push({ v: z.shortHigh, pri: 0 });
+    if (z.hedgeLow != null) wanted.push({ v: z.hedgeLow, pri: 1 });
+    if (z.hedgeHigh != null) wanted.push({ v: z.hedgeHigh, pri: 1 });
+    for (const l of z.legs) wanted.push({ v: Number(l.strike), pri: 2 });
+
+    const placed = [];
+    const seen = new Set();
+    for (const w of wanted.slice().sort((a, b) => a.pri - b.pri)) {
+        if (seen.has(w.v)) continue;
+        const text = fmtNum(w.v, 0);
+        const subVal = (subs && subs[w.v]) ? subs[w.v] : "";
+        const sub = subVal ? "δ " + subVal : "";
+        // Widest of the two lines decides the footprint, so a long delta
+        // line can't overlap its neighbour even when the strike above it
+        // would have fitted.
+        const halfW = Math.max(text.length * LAD_CHAR_W,
+                               sub.length * LAD_SUB_CHAR_W) / 2 + 3;
+        const cx = x(w.v);
+        if (cx - halfW < 0 || cx + halfW > W) continue;
+        if (placed.some(p => Math.abs(p.cx - cx) < p.halfW + halfW)) continue;
+        seen.add(w.v);
+        placed.push({ cx: cx, halfW: halfW, text: text, sub: sub, subVal: subVal });
+    }
+    return placed;
+}
+
+function _ladderSvg(z, spot, W) {
+    // Symmetric domain, so spot is the centre line by construction.
+    let half = 0;
+    for (const l of z.legs) half = Math.max(half, Math.abs(Number(l.strike) - spot));
+    if (!(half > 0)) half = Math.max(Math.abs(spot) * 0.01, 1);
+    half *= (1 + LAD_PAD);
+    const lo = spot - half, hi = spot + half;
+    const x = v => ((v - lo) / (hi - lo)) * W;
+    const cx = W / 2;
+    const bandBottom = LAD_BAND_Y + LAD_BAND_H;
+
+    // Each fill is inset by half the surface gap at both ends, so two
+    // touching zones finish LAD_GAP apart with the card showing through.
+    // White space is the separator; nothing gets a stroke around it.
+    const zone = (a, b, fill, tip) => {
+        const x0 = Math.max(0, x(a)) + LAD_GAP / 2;
+        const x1 = Math.min(W, x(b)) - LAD_GAP / 2;
+        if (!(x1 > x0)) return "";
+        const w = _ladNum(x1 - x0);
+        return '<g><title>' + _ladEsc(tip) + '</title>' +
+            '<rect x="' + _ladNum(x0) + '" y="' + LAD_BAND_Y + '" width="' + w +
+                '" height="' + LAD_BAND_H + '" fill="' + fill + '"/>' +
+            // Hover target taller than the 14px band: a mark's hit area
+            // includes its gap and then some, never just the painted pixels.
+            '<rect x="' + _ladNum(x0) + '" y="' + (LAD_BAND_Y - 5) + '" width="' + w +
+                '" height="' + (LAD_BAND_H + 10) + '" fill="transparent"/></g>';
+    };
+
+    const zones = [];
+    if (z.shortLow != null && z.shortHigh != null && z.shortLow < z.shortHigh) {
+        zones.push(zone(z.shortLow, z.shortHigh, "var(--lad-profit)",
+            "Max profit between the shorts: " + fmtNum(z.shortLow, 0) + "–" +
+            fmtNum(z.shortHigh, 0) + " (" + fmtNum(z.shortHigh - z.shortLow, 0) + " pts wide)"));
+    }
+    if (z.shortLow != null && z.hedgeLow != null && z.hedgeLow < z.shortLow) {
+        zones.push(zone(z.hedgeLow, z.shortLow, "var(--lad-wing)",
+            "Put wing: loss ramps from " + fmtNum(z.shortLow, 0) + " down to " +
+            fmtNum(z.hedgeLow, 0) + " (" + fmtNum(z.shortLow - z.hedgeLow, 0) + " pts)"));
+    }
+    if (z.shortHigh != null && z.hedgeHigh != null && z.hedgeHigh > z.shortHigh) {
+        zones.push(zone(z.shortHigh, z.hedgeHigh, "var(--lad-wing)",
+            "Call wing: loss ramps from " + fmtNum(z.shortHigh, 0) + " up to " +
+            fmtNum(z.hedgeHigh, 0) + " (" + fmtNum(z.hedgeHigh - z.shortHigh, 0) + " pts)"));
+    }
+    // A loss zone exists only past a SHORT — a lone long has no obligation,
+    // so there is nothing to shade beyond it.
+    if (z.shortLow != null) {
+        const edge = (z.hedgeLow != null && z.hedgeLow < z.shortLow) ? z.hedgeLow : z.shortLow;
+        zones.push(zone(lo, edge, "var(--lad-loss)",
+            z.hedgeLow != null && z.hedgeLow < z.shortLow
+                ? "Below " + fmtNum(edge, 0) + " the put wing caps the loss"
+                : "No put hedge below " + fmtNum(edge, 0) + " — loss is uncapped"));
+    }
+    if (z.shortHigh != null) {
+        const edge = (z.hedgeHigh != null && z.hedgeHigh > z.shortHigh) ? z.hedgeHigh : z.shortHigh;
+        zones.push(zone(edge, hi, "var(--lad-loss)",
+            z.hedgeHigh != null && z.hedgeHigh > z.shortHigh
+                ? "Above " + fmtNum(edge, 0) + " the call wing caps the loss"
+                : "No call hedge above " + fmtNum(edge, 0) + " — loss is uncapped"));
+    }
+
+    // Ticks for every open strike. The 2px zone gaps already mark the four
+    // boundaries, so these are hairlines whose real job is the rolled-book
+    // extras that aren't a boundary, plus a per-leg tooltip.
+    const ticks = [];
+    for (const l of z.legs) {
+        const k = Number(l.strike);
+        const tx = _ladNum(x(k));
+        const away = k - spot;
+        const pct = spot ? (away / spot) * 100 : 0;
+        const tip = (l.side === "short" ? "Short " : "Long ") + l.option_type + " " +
+            fmtNum(k, 0) + " · " + (away >= 0 ? "+" : "") + fmtNum(away, 0) +
+            " pts from spot (" + (pct >= 0 ? "+" : "") + pct.toFixed(2) + "%)" +
+            " · δ " + (l.delta == null
+                ? "not recorded"
+                : (Math.abs(Number(l.delta)) * 100).toFixed(1) + "%");
+        ticks.push('<g><title>' + _ladEsc(tip) + '</title>' +
+            '<line x1="' + tx + '" y1="' + (LAD_BAND_Y - 3) + '" x2="' + tx +
+                '" y2="' + (bandBottom + 3) + '" stroke="var(--text-muted)" stroke-width="1"/>' +
+            // 24px-wide transparent hit area: a 1px tick is a pinpoint.
+            '<rect x="' + _ladNum(tx - 12) + '" y="' + (LAD_BAND_Y - 6) + '" width="24" height="' +
+                (LAD_BAND_H + 12) + '" fill="transparent"/></g>');
+    }
+
+    // Strike on the first line, the short's |delta| on a quieter second one
+    // directly beneath it — stacked rather than side by side so the delta
+    // can't push the strike off its own tick.
+    const labels = _ladderLabels(z, x, W, _ladderShortDeltas(z)).map(p =>
+        '<text x="' + _ladNum(p.cx) + '" y="' + (bandBottom + 13) + '" text-anchor="middle" ' +
+            'font-size="10" fill="var(--text-secondary)">' + p.text + '</text>' +
+        // Bold on the delta only, with the δ marker left light and a size
+        // down: the marker is punctuation, the number is the reading. Bold
+        // also needs the darker ink — bold muted grey is emphasis you can't
+        // actually read.
+        (p.subVal
+            ? '<text x="' + _ladNum(p.cx) + '" y="' + (bandBottom + 26) + '" text-anchor="middle" ' +
+                'font-size="' + LAD_SUB_FONT + '">' +
+                '<tspan font-size="9" fill="var(--text-muted)">δ </tspan>' +
+                '<tspan font-weight="700" fill="var(--text-secondary)">' + p.subVal +
+                '</tspan></text>'
+            : "")).join("");
+
+    // Rounded ends on the bar as a whole, square edges where zones meet:
+    // the track is clipped once and the zone rects inherit that shape.
+    const clipId = "lad-clip-" + Math.random().toString(36).slice(2, 9);
+
+    return '<svg width="' + _ladNum(W) + '" height="' + LAD_H + '" viewBox="0 0 ' +
+            _ladNum(W) + ' ' + LAD_H + '" role="img">' +
+        '<defs><clipPath id="' + clipId + '"><rect x="0" y="' + LAD_BAND_Y +
+            '" width="' + _ladNum(W) + '" height="' + LAD_BAND_H + '" rx="3"/></clipPath></defs>' +
+        '<rect x="0" y="' + LAD_BAND_Y + '" width="' + _ladNum(W) + '" height="' +
+            LAD_BAND_H + '" rx="3" fill="var(--lad-track)"/>' +
+        '<g clip-path="url(#' + clipId + ')">' + zones.join("") + '</g>' +
+        ticks.join("") + labels +
+        // Spot: a 6px ring in the surface colour under a 2px marker, so it
+        // stays legible wherever it crosses a zone fill.
+        '<line x1="' + cx + '" y1="' + (LAD_BAND_Y - 6) + '" x2="' + cx + '" y2="' +
+            (bandBottom + 6) + '" stroke="var(--lad-surface)" stroke-width="6"/>' +
+        '<line x1="' + cx + '" y1="' + (LAD_BAND_Y - 6) + '" x2="' + cx + '" y2="' +
+            (bandBottom + 6) + '" stroke="var(--text-primary)" stroke-width="2"/>' +
+        '<path d="M' + (cx - 5) + ' ' + (LAD_BAND_Y - 10) + 'L' + (cx + 5) + ' ' +
+            (LAD_BAND_Y - 10) + 'L' + cx + ' ' + (LAD_BAND_Y - 3) +
+            'Z" fill="var(--text-primary)"/>' +
+        '<text x="' + cx + '" y="' + (LAD_BAND_Y - 14) + '" text-anchor="middle" ' +
+            'font-size="11" font-weight="700" fill="var(--text-primary)">' +
+            fmtNum(spot, 0) + '</text>' +
+        '</svg>';
+}
+
+// Row shell without the bar — the plot cell is filled on a second pass, once
+// the browser has told us how wide the cell actually is.
+function _ladderRowShell(g, z) {
+    const room = _ladderRoomText(_ladderRoom(z, indexSpot[g.underlying] || 0));
+    const hasSpot = indexSpot[g.underlying] != null;
+    return '<div class="ladder-row">' +
+        '<div class="ladder-meta">' +
+            '<span class="lad-name">' + _ladEsc(g.underlying || "—") + '</span>' +
+            '<span class="lad-expiry">' + _ladEsc(g.expiry) +
+                _dteBadge(g.expiry, g.underlying) + '</span>' +
+            (hasSpot
+                ? '<span class="lad-room" title="Index points from spot to the nearest short strike below (▼) and above (▲) it">' +
+                    room + '</span>'
+                : '') +
+        '</div>' +
+        '<div class="ladder-plot"></div>' +
+    '</div>';
+}
+
+function renderStrikeLadders() {
+    const host = document.getElementById("ladder-rows");
+    const note = document.getElementById("ladder-note");
+    if (!host || !note) return;
+
+    const books = [];
+    for (const g of ladderGroups) {
+        const z = _ladderZones(g);
+        if (z.legs.length) books.push({ g: g, z: z });
+    }
+    if (!books.length) {
+        host.innerHTML = "";
+        note.textContent = ladderGroups.length
+            ? "No open legs in the selected books — nothing at risk to plot."
+            : "No open positions.";
+        return;
+    }
+    // Positions view hidden: a cell has no width, and rendering into one
+    // would replace a good bar with a 0px one. Hold the last frame instead.
+    if (!host.clientWidth) return;
+
+    host.innerHTML = books.map(b => _ladderRowShell(b.g, b.z)).join("");
+    const cells = host.querySelectorAll(".ladder-plot");
+    const W = cells.length ? Math.floor(cells[0].clientWidth) : 0;
+    const missing = [];
+    books.forEach((b, i) => {
+        const cell = cells[i];
+        if (!cell) return;
+        const spot = indexSpot[b.g.underlying];
+        if (spot == null) {
+            missing.push(b.g.underlying || "?");
+            cell.innerHTML = '<span class="ladder-note">no recorded spot for ' +
+                _ladEsc(b.g.underlying || "this index") + ' — the bar needs one to centre on</span>';
+            return;
+        }
+        if (W < 80) return;
+        cell.innerHTML = _ladderSvg(b.z, spot, W);
+    });
+
+    note.textContent = books.length + " open book" + (books.length === 1 ? "" : "s") +
+        " · centred on the spot in the rail" +
+        (missing.length ? " · no spot for " + Array.from(new Set(missing)).join(", ") : "");
+}
+
+function loadOpenPositions() {
+    const user = account;
+    const url = "/api/open_positions?user=" + encodeURIComponent(user);
+    fetch(url)
+    .then(r => r.json())
+    .then(data => {
+        if (!Array.isArray(data) || !data[0]) {
+            document.getElementById("op-meta").textContent =
+                "Positions unavailable: " + (data && data[1] ? data[1] : "error");
+            openPositions = null;
+            return;
+        }
+        openPositions = data[1] || null;
+        if (openPositions) {
+            _syncOpenUnderlyingSelect(openPositions.available_underlyings);
+            _syncOpenExpirySelect(openPositions.available_books);
+        }
+        _renderOpenPositions(openPositions);
+    })
+    .catch(err => {
+        document.getElementById("op-meta").textContent = "Positions error: " + err;
+        openPositions = null;
+    })
+    .finally(() => {
+        const l = document.getElementById("op-loading");
+        if (l) l.style.display = "none";
+    });
+}
+
+// User-triggered refresh — see refreshIronCondor for the rationale.
+function refreshOpenPositions() {
+    const l = document.getElementById("op-loading");
+    if (l) l.style.display = "inline-flex";
+    loadOpenPositions();
+}
+
+function closeOpenPositions() {
+    const allLegs = (openPositions && openPositions.legs) || [];
+    // Close acts ONLY on the books ticked in the picker — never on an
+    // implicit "all". With nothing selected the action is disabled; guard
+    // here too in case the button is triggered programmatically.
+    const selected = _selectedOpenBooks();
+    if (selected.length === 0) {
+        alert("Select one or more books first — Close never closes everything implicitly.");
+        return;
+    }
+    const selSet = new Set(selected);
+    // Match on the (underlying, expiry) key, NOT on expiry alone. Matching
+    // by date would sweep every index sharing it, and BANKNIFTY's monthly
+    // always falls on a date that is also a NIFTY weekly — so closing one
+    // book would silently close the other at market too.
+    // Only OPEN legs can be closed; already-closed rows have net qty 0.
+    const legs = allLegs.filter(
+        p => p.status === "open" && selSet.has(_legBookKey(p)));
+    // Human-readable book labels for the prompts below.
+    const labels = selected.map(k => k.replace("|", " "));
+    if (legs.length === 0) {
+        alert("No open positions to close for the selected book" +
+              (selected.length === 1 ? "" : "s") + ": " + labels.join(", ") + ".");
+        return;
+    }
+    const user = account;
+    // Close each leg in the opposite direction:
+    //   long  -> SELL to close
+    //   short -> BUY to close
+    // Close the shorts first to eliminate assignment risk before
+    // unwinding the long hedges.
+    const orders = legs
+        .map(p => ({
+            symbol: p.symbol,
+            quantity: Math.abs(p.quantity),
+            transaction_type: p.quantity > 0 ? "SELL" : "BUY",
+            side: p.side,
+            strike: p.strike,
+        }))
+        .sort((a, b) => {
+            const aIsClose = a.transaction_type === "BUY" ? 0 : 1;  // BUY (close short) first
+            const bIsClose = b.transaction_type === "BUY" ? 0 : 1;
+            if (aIsClose !== bIsClose) return aIsClose - bIsClose;
+            return a.strike - b.strike;
+        });
+
+    const confirmMsg =
+        "Close open positions at MARKET (2% deviation).\n\n" +
+        "Book" + (selected.length === 1 ? "" : "s") + ":\n" +
+        labels.map(l => "  " + l).join("\n") + "\n\n" +
+        orders.map(o => "  " + o.transaction_type + "  " + o.symbol +
+                        "  qty " + o.quantity).join("\n") +
+        "\n\nProceed?";
+    if (!confirm(confirmMsg)) return;
+
+    document.getElementById("responseBox").value = "Closing positions...\n";
+
+    (async () => {
+        const results = [];
+        for (const o of orders) {
+            const url = "/place_order?user=" + encodeURIComponent(user) +
+                "&symbol=" + encodeURIComponent(o.symbol) +
+                "&quantity=" + encodeURIComponent(o.quantity) +
+                "&transaction_type=" + o.transaction_type +
+                "&exchange=NFO";
+            try {
+                const r = await fetch(url);
+                const d = await r.json();
+                results.push({ step: o.transaction_type + " " + o.symbol, result: d });
+            } catch (e) {
+                results.push({ step: o.transaction_type + " " + o.symbol, error: String(e) });
+            }
+            await new Promise(res => setTimeout(res, 300));
+        }
+        document.getElementById("responseBox").value = JSON.stringify(results, null, 2);
+        // Refresh positions after a short delay so the broker updates land.
+        setTimeout(loadOpenPositions, 1500);
+    })();
+}
+
+// ---- Recorded snapshots (ported from snapshots.html) -------------------
+//
+// Everything below reads the ``*_snapshot`` tables for the date picked in the
+// header, i.e. what the recorder saw — not live quotes. These panels used to
+// be a separate page; their fetch helpers are relative-path like every other
+// call on the page.
+
+let marketChart = null;
+let ivChart = null;
+let chainData = { snapshot_time: null, rows: [] };
+
+// Index the Expiry metrics chain is scoped to. Every index's chain lands in
+// the same table, so without this filter a 24500 NIFTY strike and a 24500
+// BANKNIFTY strike collapse into one row of the pivot. Seeded from the
+// dropdown by loadIcUnderlyings once the recorded set arrives.
+let chainUnderlying = "NIFTY";
+
+function fmt(v, digits = 2) {
+    if (v === null || v === undefined || v === "") return "";
+    const n = Number(v);
+    if (Number.isNaN(n)) return v;
+    return n.toFixed(digits);
+}
+
+function setStatus(msg) {
+    document.getElementById("statusMsg").innerText = msg;
+}
+
+async function fetchJSON(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    const data = await resp.json();
+    if (!Array.isArray(data) || !data[0]) {
+        throw new Error(data && data[1] ? data[1] : "API returned failure");
+    }
+    return data[1];
+}
+
+async function loadDates() {
+    try {
+        const dates = await fetchJSON("/api/snapshot_dates");
+        const sel = document.getElementById("dateSelect");
+        sel.innerHTML = "";
+        if (!dates.length) {
+            const opt = document.createElement("option");
+            opt.value = ""; opt.textContent = "(no data)";
+            sel.appendChild(opt);
+            return;
+        }
+        dates.forEach(d => {
+            const opt = document.createElement("option");
+            opt.value = d; opt.textContent = d;
+            sel.appendChild(opt);
+        });
+    } catch (e) {
+        setStatus("Failed to load dates: " + e.message);
+    }
+}
+
+function buildLineChart(canvasId, labels, datasets) {
+    const ctx = document.getElementById(canvasId).getContext("2d");
+    return new Chart(ctx, {
+        type: "line",
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: "index", intersect: false },
+            scales: {
+                x: { ticks: { maxTicksLimit: 12, autoSkip: true } },
+                y: { beginAtZero: false },
+            },
+            plugins: { legend: { position: "bottom" } },
+        },
+    });
+}
+
+async function loadMarket(date) {
+    const rows = await fetchJSON("/api/market_snapshots?date=" + encodeURIComponent(date));
+    const labels = rows.map(r => (r.snapshot_time || "").slice(11, 16));
+    const spot = rows.map(r => r.spot_price);
+    const fut = rows.map(r => r.fut_price);
+    const vix = rows.map(r => r.india_vix);
+    const weeklyIv = rows.map(r => r.weekly_atm_iv);
+    const monthlyIv = rows.map(r => r.monthly_atm_iv);
+
+    if (marketChart) marketChart.destroy();
+    if (ivChart) ivChart.destroy();
+
+    marketChart = buildLineChart("marketChart", labels, [
+        { label: "Spot", data: spot, borderColor: "#1976D2", backgroundColor: "#1976D2", yAxisID: "y", tension: 0.15, pointRadius: 0 },
+        { label: "Futures", data: fut, borderColor: "#388E3C", backgroundColor: "#388E3C", yAxisID: "y", tension: 0.15, pointRadius: 0 },
+        { label: "INDIA VIX", data: vix, borderColor: "#D32F2F", backgroundColor: "#D32F2F", yAxisID: "y1", tension: 0.15, pointRadius: 0 },
+    ]);
+    // Add a secondary axis for VIX (different scale than spot/fut)
+    marketChart.options.scales.y1 = {
+        position: "right", grid: { drawOnChartArea: false }, beginAtZero: false,
+    };
+    marketChart.update();
+
+    ivChart = buildLineChart("ivChart", labels, [
+        { label: "Weekly ATM IV %", data: weeklyIv, borderColor: "#FB8C00", backgroundColor: "#FB8C00", tension: 0.15, pointRadius: 0 },
+        { label: "Monthly ATM IV %", data: monthlyIv, borderColor: "#6A1B9A", backgroundColor: "#6A1B9A", tension: 0.15, pointRadius: 0 },
+    ]);
+    // Built while the Markets view may be hidden, so the canvas can come out
+    // 0x0 — showView() resizes on reveal, and this covers a rebuild that
+    // happens while the view is already open.
+    _resizeViewCharts(_currentView());
+}
+
+async function loadChain(date) {
+    chainData = await fetchJSON(
+        "/api/option_snapshot?date=" + encodeURIComponent(date) +
+        "&underlying=" + encodeURIComponent(chainUnderlying));
+    const expirySel = document.getElementById("expirySelect");
+    const prev = expirySel.value;
+    expirySel.innerHTML = "";
+    const expiries = [...new Set(chainData.rows.map(r => r.expiry))];
+    if (!expiries.length) {
+        const opt = document.createElement("option");
+        opt.value = ""; opt.textContent = "(no chain)";
+        expirySel.appendChild(opt);
+    } else {
+        expiries.forEach(e => {
+            const opt = document.createElement("option");
+            opt.value = e; opt.textContent = e;
+            expirySel.appendChild(opt);
+        });
+        // Hold the operator's expiry across a Reload / date change when that
+        // expiry still exists in the new data.
+        if (expiries.indexOf(prev) >= 0) expirySel.value = prev;
+    }
+    document.getElementById("snapshotMeta").innerText =
+        chainData.snapshot_time ? "Snapshot: " + chainData.snapshot_time : "No snapshot for date";
+    renderChainTable();
+}
+
+// The four cells for one leg of a strike. ``extraClass`` rules the divider
+// line on the first cell of the CE group.
+//
+// An absent leg prints "—", not blanks: the recorder can capture one side of
+// a strike and miss the other, and four empty cells look like a rendering
+// gap rather than a hole in the data.
+function _chainLegCells(leg, extraClass) {
+    const c = extraClass ? ' class="' + extraClass + '"' : "";
+    if (!leg) {
+        return `<td${c}>—</td><td>—</td><td>—</td><td>—</td>`;
+    }
+    return `<td${c}>${fmt(leg.ltp)}</td>` +
+           `<td>${fmt(leg.delta, 3)}</td>` +
+           // Blank, not 0, when the recorder captured nothing — the whole
+           // point of the OI and volume columns is that unknown != zero.
+           `<td>${leg.oi ?? ""}</td>` +
+           `<td>${leg.volume ?? ""}</td>`;
+}
+
+function renderChainTable() {
+    const exp = document.getElementById("expirySelect").value;
+    const tbody = document.querySelector("#chainTable tbody");
+    tbody.innerHTML = "";
+    const rows = (chainData.rows || []).filter(r => r.expiry === exp);
+    if (!rows.length) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = '<td class="empty" colspan="9">no chain rows for this expiry</td>';
+        tbody.appendChild(tr);
+        return;
+    }
+    // Pivot the API's one-row-per-leg shape into one row per strike. Keyed on
+    // the NUMBER, not the raw value: the column is a REAL in SQLite, so the
+    // same strike can come back as 24500 or "24500.0" and string keys would
+    // split the pair across two rows. Rows arriving already scoped to one
+    // index (the ?underlying= filter) is what makes a bare strike a safe key.
+    const byStrike = new Map();
+    for (const r of rows) {
+        if (r.option_type !== "PE" && r.option_type !== "CE") continue;
+        const k = Number(r.strike);
+        if (Number.isNaN(k)) continue;
+        let entry = byStrike.get(k);
+        if (!entry) { entry = { strike: k, PE: null, CE: null }; byStrike.set(k, entry); }
+        entry[r.option_type] = r;
+    }
+    // Re-sort here rather than trusting the API's order: its ORDER BY is
+    // strike-then-type over the flat list, which says nothing about the order
+    // Map iteration hands back after the pivot.
+    const strikes = [...byStrike.values()].sort((a, b) => a.strike - b.strike);
+    for (const s of strikes) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+            `<td>${s.strike}</td>` +
+            _chainLegCells(s.PE, "") +
+            _chainLegCells(s.CE, "sep");
+        tbody.appendChild(tr);
+    }
+}
+
+// Switching index invalidates the expiry pick — the chains are recorded
+// independently and one index may be missing an expiry the other has.
+// Clearing the dropdown lets loadChain re-seed from the new index's own
+// expiries instead of carrying a stale pick that matches no rows.
+function changeChainUnderlying() {
+    const sel = document.getElementById("chain-underlying-select");
+    if (sel) chainUnderlying = sel.value;
+    document.getElementById("expirySelect").innerHTML = "";
+    refreshChain();
+}
+
+// Re-poll the chain for the header's currently selected date. Separate from
+// loadChain so setInterval and the index dropdown don't each have to know
+// where the date lives, and so a failed background poll reports on the card
+// instead of rejecting unhandled — the header status line belongs to
+// loadAll, which is not what's running here.
+function refreshChain() {
+    const date = document.getElementById("dateSelect").value;
+    if (!date) return;
+    loadChain(date).catch(e => {
+        document.getElementById("snapshotMeta").innerText =
+            "Refresh failed: " + e.message;
+    });
+}
+
+// ---- Adjustments audit -------------------------------------------------
+
+let adjustmentsData = [];
+let adjChart = null;
+
+async function loadAdjustments() {
+    // Latest 200 rows newest-first. Filter UI is client-side over what
+    // was returned (no per-keystroke server hit).
+    try {
+        adjustmentsData = await fetchJSON(
+            "/api/adjustments?limit=200&user=" + encodeURIComponent(account));
+    } catch (e) {
+        adjustmentsData = [];
+        document.getElementById("adjMeta").innerText = "Load failed: " + e.message;
+        return;
+    }
+    if (!Array.isArray(adjustmentsData)) adjustmentsData = [];
+
+    // Refresh the expiry filter from whatever expiries are in the data.
+    const sel = document.getElementById("adjExpiryFilter");
+    const prev = sel.value;
+    const expiries = Array.from(new Set(adjustmentsData.map(r => r.expiry))).sort();
+    sel.innerHTML = '<option value="">All expiries</option>'
+        + expiries.map(e => `<option value="${e}">${e}</option>`).join("");
+    if (expiries.includes(prev)) sel.value = prev;
+
+    document.getElementById("adjMeta").innerText =
+        adjustmentsData.length
+            ? adjustmentsData.length + " row(s); newest first"
+            : "No adjustments recorded yet";
+    renderAdjustmentsAll();
+}
+
+function renderAdjustmentsAll() {
+    // Single entry-point driven by the expiry filter dropdown. Fans the
+    // re-render out to:
+    //   - the audit table (newest-first listing),
+    //   - the P&L chart (oldest→newest on the time axis),
+    //   - and the Markets-view spot chart (adjustment markers at the spot
+    //     price at each adjustment's timestamp).
+    renderAdjustments();
+    renderAdjustmentsChart();
+    _updateMarketChartWithAdjustments();
+}
+
+
+function _updateMarketChartWithAdjustments() {
+    // Overlay adjustment markers on the intraday spot chart in the Markets
+    // view. Each marker sits at the spot price for the same HH:MM as the
+    // adjustment timestamp, so the operator can see WHERE on the day's spot
+    // curve each adjustment fired.
+    //
+    // This is why both charts stay mounted while their view is hidden: the
+    // filter lives in PNL and writes into a Markets chart.
+    //
+    // The expiry filter narrows the marker set — selecting "first_week"
+    // shows only that week's adjustments on the market chart too. Date
+    // filtering happens against the date picker so adjustments on
+    // other days aren't shown on today's chart.
+    //
+    // Guards: silently no-ops if marketChart hasn't been built yet
+    // (Promise.all race) or if the date picker is empty.
+    if (!marketChart) return;
+    const date = document.getElementById("dateSelect").value;
+    if (!date) return;
+
+    const labels = marketChart.data.labels;
+    const spotDs = marketChart.data.datasets.find(d => d.label === 'Spot');
+    if (!spotDs) return;
+    const spot = spotDs.data;
+
+    // Build label→index map once for O(1) lookup. Duplicate HH:MM
+    // labels (two ticks per minute at 30s cadence) resolve to the
+    // first occurrence — the :00 tick. Close enough for visualization.
+    const labelToIdx = {};
+    labels.forEach((l, i) => { if (!(l in labelToIdx)) labelToIdx[l] = i; });
+
+    // Marker dataset: null at every label position EXCEPT where an
+    // adjustment landed; those positions get the spot price so the
+    // marker sits ON the spot curve.
+    const markerData = labels.map(() => null);
+    const filtered = _filteredAdjustments();
+    let placed = 0;
+    for (const adj of filtered) {
+        const ts = adj.timestamp || "";
+        // ``timestamp`` is ISO ('YYYY-MM-DDTHH:MM:SS+05:30') — slice
+        // 11:16 yields 'HH:MM' regardless of separator.
+        if (!ts.startsWith(date)) continue;
+        const hhmm = ts.slice(11, 16);
+        const idx = labelToIdx[hhmm];
+        if (idx != null) {
+            markerData[idx] = spot[idx];
+            placed++;
+        }
+    }
+
+    // Strip any prior marker dataset, then push the new one. Skip the
+    // push entirely when there are no markers to plot, so the legend
+    // doesn't grow an empty "Adjustment" entry.
+    marketChart.data.datasets = marketChart.data.datasets.filter(
+        d => d.label !== 'Adjustment'
+    );
+    if (placed > 0) {
+        marketChart.data.datasets.push({
+            type: 'line',
+            label: 'Adjustment',
+            data: markerData,
+            showLine: false,
+            pointRadius: 7,
+            pointHoverRadius: 9,
+            pointStyle: 'triangle',
+            backgroundColor: '#FFC107',
+            borderColor: '#FF6F00',
+            borderWidth: 2,
+            yAxisID: 'y',
+        });
+    }
+    marketChart.update('none');
+}
+
+function _filteredAdjustments() {
+    const exp = document.getElementById("adjExpiryFilter").value;
+    return exp
+        ? adjustmentsData.filter(r => r.expiry === exp)
+        : adjustmentsData;
+}
+
+function renderAdjustmentsChart() {
+    // Mixed bar+line: P&L bars (left axis), NIFTY 50 + India VIX as
+    // lines (right + hidden axes). The bot's data comes newest-first
+    // so we reverse for the chart — left-to-right time progression
+    // reads more naturally.
+    const filtered = _filteredAdjustments();
+    const rows = [...filtered].reverse();
+    const labels = rows.map(r => (r.timestamp || "").replace("T", " ").split(".")[0]);
+    const pnls = rows.map(r => r.realized_pnl);
+    const nifty = rows.map(r => r.nifty_spot);
+    const vix = rows.map(r => r.india_vix);
+    // Bar fill = sign of P&L (green/red); bar border = adjustment
+    // type (blue/orange/teal). Two orthogonal encodings on one mark.
+    const barColors = pnls.map(p => p == null ? 'rgba(120,120,120,0.5)'
+                                  : p > 0    ? 'rgba(31,122,58,0.65)'
+                                  : p < 0    ? 'rgba(178,34,34,0.65)'
+                                             : 'rgba(120,120,120,0.5)');
+    const ADJ_TYPE_COLORS = {
+        'inward':         '#1565C0',
+        'outward':        '#E65100',
+        'partial_reduce': '#00838F',
+    };
+    const borderColors = rows.map(r => ADJ_TYPE_COLORS[r.adjustment_type] || '#666');
+
+    // Cumulative P&L: running sum across the (chronologically-ordered)
+    // rows. Nulls in `pnls` are treated as 0 so the line stays
+    // continuous even if an audit row recorded no realized number.
+    let runningTotal = 0;
+    const cumPnl = pnls.map(p => {
+        if (p != null) runningTotal += p;
+        return runningTotal;
+    });
+
+    if (adjChart) { adjChart.destroy(); adjChart = null; }
+    if (!rows.length) return;
+
+    const ctx = document.getElementById("adjChart").getContext("2d");
+    adjChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                {
+                    type: 'bar',
+                    label: 'Realized P&L (₹)',
+                    data: pnls,
+                    backgroundColor: barColors,
+                    borderColor: borderColors,   // encodes adjustment_type
+                    borderWidth: 2,
+                    yAxisID: 'yPnl',
+                    order: 3,   // bars deepest behind
+                },
+                {
+                    type: 'line',
+                    label: 'Cumulative P&L (₹)',
+                    data: cumPnl,
+                    borderColor: '#7B1FA2',
+                    backgroundColor: '#7B1FA2',
+                    yAxisID: 'yPnl',
+                    tension: 0.15,
+                    pointRadius: 2,
+                    pointHoverRadius: 4,
+                    borderWidth: 2,
+                    order: 2,
+                },
+                {
+                    type: 'line',
+                    label: 'NIFTY 50',
+                    data: nifty,
+                    borderColor: '#1976D2',
+                    backgroundColor: '#1976D2',
+                    yAxisID: 'yNifty',
+                    tension: 0.15,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    order: 1,
+                },
+                {
+                    type: 'line',
+                    label: 'India VIX',
+                    data: vix,
+                    borderColor: '#D32F2F',
+                    backgroundColor: '#D32F2F',
+                    yAxisID: 'yVix',
+                    tension: 0.15,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    borderDash: [4, 3],
+                    order: 0,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { ticks: { maxTicksLimit: 12, autoSkip: true, font: { size: 10 } } },
+                yPnl: {
+                    type: 'linear',
+                    position: 'left',
+                    title: { display: true, text: 'Realized P&L (₹)' },
+                    beginAtZero: false,
+                },
+                yNifty: {
+                    type: 'linear',
+                    position: 'right',
+                    title: { display: true, text: 'NIFTY 50' },
+                    grid: { drawOnChartArea: false },   // don't clutter — bars own the gridlines
+                },
+                yVix: {
+                    // Dedicated scale so the VIX line is plotted on its
+                    // own range; ticks hidden because three visible axes
+                    // would crowd the chart. The legend + tooltip carry
+                    // the actual VIX value.
+                    type: 'linear',
+                    position: 'right',
+                    display: false,
+                },
+            },
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const v = ctx.parsed.y;
+                            if (v == null) return ctx.dataset.label + ": —";
+                            const digits = ctx.dataset.label === 'India VIX' ? 2
+                                         : ctx.dataset.label === 'NIFTY 50' ? 0 : 2;
+                            return `${ctx.dataset.label}: ${Number(v).toFixed(digits)}`;
+                        },
+                        // Append the adjustment_type as a footer when
+                        // hovering on a bar — encodes the third dimension
+                        // (already shown as bar border colour but the
+                        // tooltip makes it explicit).
+                        footer: (items) => {
+                            const idx = items?.[0]?.dataIndex;
+                            if (idx == null) return '';
+                            const r = rows[idx];
+                            if (!r) return '';
+                            return `type: ${r.adjustment_type || '—'}  ` +
+                                   `side: ${r.side || '—'}`;
+                        },
+                    },
+                },
+            },
+        },
+    });
+    // See loadMarket — a chart built behind a hidden view needs a resize.
+    _resizeViewCharts(_currentView());
+}
+
+function _arrow(before, after) {
+    if (before == null && after == null) return "";
+    return `${before ?? "—"}&nbsp;→&nbsp;${after ?? "—"}`;
+}
+
+function _deltaArrow(before, after) {
+    const bp = (before == null) ? null : (Math.abs(before) * 100).toFixed(1);
+    const ap = (after  == null) ? null : (Math.abs(after)  * 100).toFixed(1);
+    return _arrow(bp, ap);
+}
+
+// Uses the page's shared P&L tint so an adjustment's realised figure is
+// coloured the same as every other P&L number on the page.
+function _pnlCell(pnl) {
+    if (pnl == null) return '<td>—</td>';
+    const sign = pnl > 0 ? "+" : "";
+    return `<td class="${_pnlClass(pnl)}">${sign}${fmt(pnl, 2)}</td>`;
+}
+
+function renderAdjustments() {
+    const rows = _filteredAdjustments();
+    const exp = document.getElementById("adjExpiryFilter").value;
+    const tbody = document.querySelector("#adjustmentsTable tbody");
+    tbody.innerHTML = "";
+    for (const r of rows) {
+        // Trim the timestamp to seconds, strip the ISO 'T'.
+        const ts = (r.timestamp || "").replace("T", " ").split(".")[0];
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+            `<td class="left">${ts}</td>` +
+            `<td class="left">${r.expiry || ""}</td>` +
+            `<td class="left opt-${r.side}">${r.side || ""}</td>` +
+            `<td class="left">${r.adjustment_type || ""}</td>` +
+            `<td>${_deltaArrow(r.short_delta_before, r.short_delta_after)}</td>` +
+            `<td>${_arrow(r.short_strike_before, r.short_strike_after)}</td>` +
+            `<td>${_arrow(r.hedge_strike_before, r.hedge_strike_after)}</td>` +
+            `<td>${fmt(r.nifty_spot, 0)}</td>` +
+            `<td>${fmt(r.india_vix, 2)}</td>` +
+            _pnlCell(r.realized_pnl) +
+            `<td class="left mono">${r.order_ids || ""}</td>`;
+        tbody.appendChild(tr);
+    }
+    if (rows.length === 0) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+            `<td class="empty" colspan="11">` +
+            (exp ? `No adjustments for ${exp}` : "No adjustments recorded yet") +
+            `</td>`;
+        tbody.appendChild(tr);
+    }
+}
+
+async function loadAll() {
+    setStatus("Loading...");
+    const date = document.getElementById("dateSelect").value;
+    if (!date) { setStatus("No date available"); return; }
+    try {
+        await Promise.all([
+            loadMarket(date),
+            loadChain(date),
+            loadAdjustments(),
+        ]);
+        // Both market chart and adjustments data are ready — overlay
+        // the adjustment markers on the market chart. ``loadAdjustments``
+        // already calls ``renderAdjustmentsAll`` (which also tries
+        // this), but it may have raced ahead of ``loadMarket`` and
+        // hit the ``!marketChart`` guard. Calling once more here
+        // closes that race.
+        _updateMarketChartWithAdjustments();
+        setStatus("");
+    } catch (e) {
+        setStatus("Load failed: " + e.message);
+    }
+}
+
+// ---- View switching ----------------------------------------------------
+//
+// All four views stay mounted and only a class moves. Chart.js measures its
+// canvas from the containing box, and a box inside display:none measures 0 —
+// so any chart built while its view was hidden comes back 0x0 and has to be
+// resized when the view is revealed.
+
+const VIEWS = ["positions", "pnl", "markets", "market-speed", "admin"];
+
+function _currentView() {
+    for (const v of VIEWS) {
+        const sec = document.getElementById("view-" + v);
+        if (sec && sec.classList.contains("active")) return v;
+    }
+    return "positions";
+}
+
+function _resizeViewCharts(name) {
+    const charts = name === "markets" ? [marketChart, ivChart]
+                 : name === "pnl"     ? [rpChart, adjChart]
+                 : [];
+    for (const c of charts) { if (c) c.resize(); }
+    // The ladder is hand-drawn SVG sized in px, so it can't reflow itself:
+    // any poll that landed while Positions was hidden skipped the render
+    // (zero-width cells), and this is where it catches up.
+    if (name === "positions") renderStrikeLadders();
+}
+
+// Window resize: same reason — the bars are px-sized, so they need a redraw
+// rather than a reflow. Debounced because a drag fires this continuously.
+let _ladderResizeTimer = null;
+window.addEventListener("resize", () => {
+    clearTimeout(_ladderResizeTimer);
+    _ladderResizeTimer = setTimeout(renderStrikeLadders, 150);
+});
+
+function showView(name) {
+    if (VIEWS.indexOf(name) < 0) name = "positions";
+    for (const v of VIEWS) {
+        const sec = document.getElementById("view-" + v);
+        const btn = document.getElementById("nav-" + v);
+        const on = (v === name);
+        if (sec) sec.classList.toggle("active", on);
+        if (btn) {
+            btn.classList.toggle("active", on);
+            if (on) btn.setAttribute("aria-current", "page");
+            else btn.removeAttribute("aria-current");
+        }
+    }
+    // Keep the URL in step so a reload (or a bookmarked link) lands on the
+    // same view instead of snapping back to Positions. replaceState rather
+    // than a hash assignment so menu clicks don't pile up history entries.
+    if (location.hash !== "#" + name) {
+        history.replaceState(null, "", "#" + name);
+    }
+    _resizeViewCharts(name);
+}
+
+window.addEventListener("hashchange",
+    () => showView((location.hash || "").replace("#", "")));
+
+_initAccountSelect();
+get_status();
+loadIndexSummary();
+loadSystemStatus();
+// Underlyings load once at boot — the recorder's set changes only on a
+// config edit + restart, so there's no value in re-polling it every 30s.
+loadIcUnderlyings();
+loadIronCondor();
+loadOpenPositions();
+loadRealisedPnl();
+// Land on the view named in the URL fragment, defaulting to Positions.
+showView((location.hash || "").replace("#", ""));
+// Recorded-snapshot panels: the date list has to arrive before anything can
+// be fetched for a date, so this pair is sequential where the rest is not.
+(async function initSnapshots() {
+    await loadDates();
+    await loadAll();
+})();
+setInterval(get_status, 30000);
+setInterval(loadIndexSummary, 30000);
+setInterval(loadSystemStatus, 30000);
+setInterval(loadIronCondor, 30000);
+setInterval(loadOpenPositions, 30000);
+// Expiry metrics polls with the live blocks, not with loadAll's Reload: the
+// recorder writes a fresh snapshot every cycle, so the chain the Iron Condor
+// picker just chose from would otherwise be older than the preset beside it.
+setInterval(refreshChain, 30000);
+// Realised P&L only moves when a fill lands, so a slower poll than the
+// 30s live panels is plenty — and each call re-reads the whole ledger.
+setInterval(loadRealisedPnl, 120000);
+</script>
+
+</body>
+</html>

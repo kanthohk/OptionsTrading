@@ -1,0 +1,104 @@
+source venv/bin/activate
+
+sudo lsof -i :5000
+kill <PID>
+
+sudo timedatectl set-timezone Asia/Kolkata
+
+
+Step 1: Create service file
+
+sudo nano /etc/systemd/system/flaskapp.service
+
+Paste:
+
+[Unit]
+Description=Flask API Service
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/trading-bot
+ExecStart=/home/ubuntu/trading-bot/venv/bin/python app.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
+Step 2: Reload systemd
+sudo systemctl daemon-reexec
+sudo systemctl daemon-reload
+Step 3: Start service
+sudo systemctl start flaskapp
+sudo systemctl stop flaskapp
+sudo systemctl restart flaskapp
+Step 4: Enable auto-start on reboot
+sudo systemctl enable flaskapp
+Step 5: Check status
+sudo systemctl status flaskapp
+Step 6: View logs
+journalctl -u flaskapp -f
+
+
+BEST + Production (Highly Recommended)
+
+Instead of python app.py, use Gunicorn:
+
+pip install gunicorn
+
+Update service file:
+
+ExecStart=/home/ubuntu/trading-bot/venv/bin/gunicorn -w 4 -b 0.0.0.0:5000 app:app
+
+
+=================================================================
+
+Scheduling
+
+To schedule start/stop of your Flask service (flaskapp), the best tool on Ubuntu is cron.
+
+🔹 1. Open Crontab
+crontab -e
+
+👉 First time → choose editor (select nano)
+
+🔹 2. Schedule Start & Stop
+🟢 Example: Start at 9:00 AM (IST)
+0 9 * * * /bin/systemctl start flaskapp
+🔴 Example: Stop at 3:30 PM (IST)
+30 15 * * * /bin/systemctl stop flaskapp
+🔹 3. Cron Format Explained
+* * * * *
+| | | | |
+| | | | └── Day of week (0–7)
+| | | └──── Month
+| | └────── Day of month
+| └──────── Hour
+└────────── Minute
+🔹 4. Important (VERY IMPORTANT)
+✅ Use Full Path for systemctl
+
+Find it:
+
+which systemctl
+
+Usually:
+
+/bin/systemctl
+✅ Run with sudo (if required)
+
+Edit root crontab instead:
+
+sudo crontab -e
+
+👉 Then use:
+
+0 9 * * * /bin/systemctl start flaskapp
+🔹 5. Verify Cron is Running
+systemctl status cron
+
+Start if needed:
+
+sudo systemctl start cron
+🔹 6. Check Cron Logs
+grep CRON /var/log/syslog
